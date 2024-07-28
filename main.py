@@ -4,6 +4,9 @@ import pandas as pd
 from datetime import datetime, timedelta
 import numpy as np
 
+pd.set_option('future.no_silent_downcasting', True)
+
+
 # Project directories paths
 paths = {'main': Path.cwd()}
 paths.update({'data': Path.joinpath(paths.get('main'), 'data')})
@@ -28,8 +31,11 @@ ls_fundamental_sheet_name = ['LT_DEBT', 'ST_DEBT', 'CFO', 'INTEREST_EXP', 'EBITD
                              'CASH', 'NET_INCOME']
 dic_issuer_fundamental_quarterly = {i: dic_fm_data[i] for i in ls_fundamental_sheet_name}
 
-ls_issuer_market_sheet_name = ['RATING', 'MKT_CAP', 'TOT_RETURN', 'SHARE_PRICE', 'CDS_SPREAD_5Y']
+ls_issuer_market_sheet_name = ['MKT_CAP', 'TOT_RETURN', 'SHARE_PRICE', 'CDS_SPREAD_5Y']
 dic_issuer_market_daily = {i: dic_fm_data[i] for i in ls_issuer_market_sheet_name}
+
+ls_issuer_market_sheet_name = ['RATING']
+dic_issuer_rating_daily = {i: dic_fm_data[i] for i in ls_issuer_market_sheet_name}
 
 ls_market_sheet_name = ['RATES', 'SPX']
 dic_market_data_daily = {i: dic_fm_data[i] for i in ls_market_sheet_name}
@@ -56,8 +62,11 @@ def set_index_df_in_dic(dic, index):
 
 dic_issuer_fundamental_quarterly = set_index_df_in_dic(dic_issuer_fundamental_quarterly, 'DATES')
 dic_issuer_market_daily = set_index_df_in_dic(dic_issuer_market_daily, 'DATES')
+dic_issuer_rating_daily = set_index_df_in_dic(dic_issuer_rating_daily, 'DATES')
 dic_market_data_daily = set_index_df_in_dic(dic_market_data_daily, 'DATES')
 
+
+# *** Fundamental data preprocessing ***
 
 # Convert quarterly data to daily data
 def df_conv_quarterly_to_daily(df):
@@ -92,9 +101,23 @@ def dic_lag_data(dic,lag):
 dic_issuer_fundamental_quarterly = dic_lag_data(dic_issuer_fundamental_quarterly, lag=90)
 
 
+# *** Issuer rating preprocessing ***
+def dic_rating_preprocessing_1(dic):
+    for i in dic:
+        # Forward-fill the values
+        dic[i] = dic[i].ffill()
+        dic[i] = dic[i].replace('NR', np.nan)
+    return dic
+
+df_test_1 = dic_rating_preprocessing_1(dic_issuer_rating_daily)['RATING']
+
+
+
+# Date filtering
 def df_filtered_date(df, s_date):
     df = df[df.index.isin(s_date)]
     return df
+
 
 def dic_filtered_date(dic, s_date):
     for i in dic:
