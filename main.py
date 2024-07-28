@@ -1,24 +1,50 @@
-# This is a sample Python script.
+# Import packages
+from pathlib import Path
+import pandas as pd
 
-# Press Maj+F10 to execute it or replace it with your code.
-# Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
-
-
-def print_hi(name):
-    # Use a breakpoint in the code line below to debug your script.
-    print(f'Hi, {name}')  # Press Ctrl+F8 to toggle the breakpoint.
-
-
-# Press the green button in the gutter to run the script.
-if __name__ == '__main__':
-    print_hi('PyCharm')
-
-# See PyCharm help at https://www.jetbrains.com/help/pycharm/
+# Project directories paths
+paths = {'main': Path.cwd()}
+paths.update({'data': Path.joinpath(paths.get('main'), 'data')})
+paths.update({'scripts': Path.joinpath(paths.get('main'), 'scripts')})
 
 
-print("Test")
 
-print("Test")
+# %%
+# **********************************************************
+# *** Section: DATA MANAGEMENT                           ***
+# **********************************************************
 
-print("Test")
+dic_fm_data = pd.read_excel(Path.joinpath(paths.get('data'), 'Thesis_Data_Importable.xlsx'), sheet_name=None)
 
+
+for name, df in dic_fm_data.items():
+    print(name)
+
+ls_fundamental_sheet_name = ['LT_DEBT', 'ST_DEBT', 'CFO', 'INTEREST_EXP', 'EBITDA', 'NET_DEBT', 'TOT_ASSET',
+                             'WORK_CAP','RET_EARN', 'EBIT', 'SALES', 'CUR_ASSET', 'CUR_LIAB', 'BOOK_EQUITY',
+                             'CASH', 'NET_INCOME']
+
+dic_issuer_fundamental_quarterly =
+
+ls_issuer_market_sheet_name = ['RATING', 'MKT_CAP', 'TOT_RETURN', 'SHARE_PRICE', 'CDS_SPREAD_5Y']
+
+dic_issuer_market_daily =
+
+ls_market_sheet_name = ['RATES', 'SPX']
+
+dic_market_data_daily =
+
+ls_issuer_description_sheet_name = ['ISSUER', 'CDS_TICKER']
+
+dic_issuer_description =
+
+(ISSUER,LT_DEBT,ST_DEBT, CFO, INTEREST_EXP, EBITDA, NET_DEBT, TOT_ASSET, WORK_CAP, RET_EARN, EBIT, SALES, CUR_ASSET,
+ CUR_LIAB, BOOK_EQUITY, CASH, NET_INCOME)
+RATING
+MKT_CAP
+TOT_RETURN
+SHARE_PRICE
+CDS_TICKER
+CDS_SPREAD_5Y
+RATES
+SPX
