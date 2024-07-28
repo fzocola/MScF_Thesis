@@ -47,6 +47,7 @@ def get_market_open_date(s_ref_data):
 s_market_open_date = get_market_open_date(dic_market_data_daily['SPX'].set_index('DATES')['px_last'])
 
 
+# Set the index of the dataframe
 def set_index_df_in_dic(dic, index):
     for i in dic:
         dic[i] = dic[i].set_index(index)
@@ -54,20 +55,24 @@ def set_index_df_in_dic(dic, index):
 
 
 dic_issuer_fundamental_quarterly = set_index_df_in_dic(dic_issuer_fundamental_quarterly, 'DATES')
+dic_issuer_market_daily = set_index_df_in_dic(dic_issuer_market_daily, 'DATES')
+dic_market_data_daily = set_index_df_in_dic(dic_market_data_daily, 'DATES')
 
 
+# Convert quarterly data to daily data
 def df_conv_quarterly_to_daily(df):
     na_to_nb_value = -9999999999999
     df = df.fillna(na_to_nb_value)
 
     # Create a date range that includes all daily dates within the range of the quarterly data
-    daily_index = pd.date_range(start=df.index.min(), end=df.index.max() + timedelta(days=60), freq='D')
+    daily_index = pd.date_range(start=df.index.min(), end=df.index.max() + timedelta(days=90), freq='D')
 
     # Reindex the DataFrame to the daily date range and forward-fill the values
     df_daily = df.reindex(daily_index).ffill()
     df_daily = df_daily.replace(na_to_nb_value, np.nan)
 
     return df_daily
+
 
 def dic_conv_quarterly_to_daily(dic):
     for i in dic:
@@ -77,7 +82,30 @@ def dic_conv_quarterly_to_daily(dic):
 
 dic_issuer_fundamental_quarterly = dic_conv_quarterly_to_daily(dic_issuer_fundamental_quarterly)
 
-df_test_1 = dic_issuer_fundamental_quarterly['LT_DEBT']
+# Lag the fundamental data by 90 days
+def dic_lag_data(dic,lag):
+    for i in dic:
+        dic[i] = dic[i].shift(lag)
+    return dic
+
+
+dic_issuer_fundamental_quarterly = dic_lag_data(dic_issuer_fundamental_quarterly, lag=90)
+
+
+def df_filtered_date(df, s_date):
+    df = df[df.index.isin(s_date)]
+    return df
+
+def dic_filtered_date(dic, s_date):
+    for i in dic:
+        dic[i] = df_filtered_date(dic[i], s_date)
+    return dic
+
+
+dic_issuer_fundamental_quarterly = dic_filtered_date(dic_issuer_fundamental_quarterly, s_market_open_date)
+dic_issuer_market_daily = dic_filtered_date(dic_issuer_market_daily, s_market_open_date)
+dic_market_data_daily = dic_filtered_date(dic_market_data_daily, s_market_open_date)
+
 
 
 '''
@@ -102,4 +130,9 @@ df_daily = df_daily.replace(na_to_nb_value, np.nan)
 '''
 df_test_1 = dic_issuer_fundamental_quarterly['LT_DEBT']
 df_test_2 = df_conv_quarterly_to_daily(dic_issuer_fundamental_quarterly['LT_DEBT'])
+'''
+
+'''
+df_test_1 = dic_issuer_fundamental_quarterly['LT_DEBT']
+df_filtered = df_filtered_date(df_test_1, s_market_open_date)
 '''
