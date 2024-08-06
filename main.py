@@ -110,6 +110,9 @@ def dic_rating_preprocessing_1(dic):
     return dic
 
 
+dic_issuer_rating_daily = dic_rating_preprocessing_1(dic_issuer_rating_daily)
+
+
 # Date filtering
 def df_filtered_date(df, s_date):
     df = df[df.index.isin(s_date)]
@@ -126,5 +129,63 @@ dic_issuer_fundamental_quarterly = dic_filtered_date(dic_issuer_fundamental_quar
 dic_issuer_market_daily = dic_filtered_date(dic_issuer_market_daily, s_market_open_date)
 dic_issuer_rating_daily = dic_filtered_date(dic_issuer_rating_daily, s_market_open_date)
 dic_market_data_daily = dic_filtered_date(dic_market_data_daily, s_market_open_date)
+
+
+
+# Issuer rating preprocessing_2
+df_issuer_rating_daily = dic_issuer_rating_daily['RATING']
+
+# Check the values in the rating dataframe
+s_issuer_rating_daily_unique = pd.unique(df_issuer_rating_daily.values.ravel())
+
+# Define a mapping from BBG ratings to S&P rating
+bbg_rating_to_sp_rating = {
+    'AAA': 'AAA',
+    'AA+': 'AA+', 'AA': 'AA', 'AA-': 'AA-',
+    'A+': 'A+', 'A': 'A', 'A-': 'A-',
+    'BBB+': 'BBB+', 'BBB': 'BBB', 'BBB-': 'BBB-',
+    'BB+': 'BB+', 'BB': 'BB', 'BB-': 'BB-',
+    'B+': 'B+', 'B': 'B', 'B-': 'B-',
+    'CCC+': 'CCC+', 'CCC': 'CCC', 'CCC-': 'CCC-',
+    'CC+': 'CC', 'CC': 'CC', 'CC-': 'CC',
+    'C+': 'C', 'C': 'C', 'C-': 'C',
+    'DDD+': 'D', 'DDD': 'D', 'DDD-': 'D',
+    'DD+': 'D', 'DD': 'D', 'DD-': 'D',
+    'D+': 'D', 'D': 'D', 'D-': 'D',
+}
+
+
+# Apply the mapping to each column of the dataframe
+df_issuer_rating_daily = df_issuer_rating_daily.apply(lambda col: col.map(bbg_rating_to_sp_rating))
+
+# Check the values in the rating dataframe
+s_issuer_rating_daily_unique = pd.unique(df_issuer_rating_daily.values.ravel())
+
+# Define a mapping from S&P rating to numeric values
+sp_rating_to_numeric = {
+    'AAA': 1,
+    'AA+': 2, 'AA': 3, 'AA-': 4,
+    'A+': 5, 'A': 6, 'A-': 7,
+    'BBB+': 8, 'BBB': 9, 'BBB-': 10,
+    'BB+': 11, 'BB': 12, 'BB-': 13,
+    'B+': 14, 'B': 15, 'B-': 16,
+    'CCC+': 17, 'CCC': 18, 'CCC-': 19,
+    'CC': 20,
+    'C': 21,
+    'D': 22,
+}
+
+df_issuer_rating_numeric_daily = df_issuer_rating_daily.apply(lambda col: col.map(sp_rating_to_numeric))
+
+s_issuer_rating_daily_numeric_unique = pd.unique(df_issuer_rating_daily.values.ravel())
+
+
+# ****
+
+# Create a new DataFrame with the same index and columns, filled with zeros
+df_issuer_rating_change_daily = pd.DataFrame(np.zeros_like(df_issuer_rating_numeric_daily),
+                                             index=df_issuer_rating_numeric_daily.index,
+                                             columns=df_issuer_rating_numeric_daily.columns)
+
 
 
