@@ -4,6 +4,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 import numpy as np
 from tqdm import tqdm
+import copy
 
 pd.set_option('future.no_silent_downcasting', True)
 
@@ -56,9 +57,10 @@ s_market_open_date = get_market_open_date(dic_market_data_daily['SPX'].set_index
 
 # Set the index of the dataframe
 def set_index_df_in_dic(dic, index):
-    for i in dic:
-        dic[i] = dic[i].set_index(index)
-    return dic
+    dic_copy = copy.deepcopy(dic)
+    for i in dic_copy:
+        dic_copy[i] = dic_copy[i].set_index(index)
+    return dic_copy
 
 
 dic_issuer_fundamental_quarterly = set_index_df_in_dic(dic_issuer_fundamental_quarterly, 'DATES')
@@ -71,6 +73,7 @@ dic_market_data_daily = set_index_df_in_dic(dic_market_data_daily, 'DATES')
 
 # Convert quarterly data to daily data
 def df_conv_quarterly_to_daily(df):
+    # Fill all the nan with na_to_nb_value, we don't want to replace nan with last value
     na_to_nb_value = -9999999999999
     df = df.fillna(na_to_nb_value)
 
@@ -85,21 +88,68 @@ def df_conv_quarterly_to_daily(df):
 
 
 def dic_conv_quarterly_to_daily(dic):
-    for i in dic:
-        dic[i] = df_conv_quarterly_to_daily(dic[i])
-    return dic
+    dic_copy = copy.deepcopy(dic)
+    for i in dic_copy:
+        dic_copy[i] = df_conv_quarterly_to_daily(dic_copy[i])
+    return dic_copy
 
 
-dic_issuer_fundamental_quarterly = dic_conv_quarterly_to_daily(dic_issuer_fundamental_quarterly)
+dic_issuer_fundamental_daily = dic_conv_quarterly_to_daily(dic_issuer_fundamental_quarterly)
+
+'''
+df_test_2 = dic_issuer_fundamental_quarterly['LT_DEBT']
+df_test_3 = dic_issuer_fundamental_quarterly['LT_DEBT'].copy()
+df_test_3.index = df_test_3.index + pd.offsets.MonthEnd(0)
+'''
+
+
+# Convert quarterly data to monthly data
+def df_conv_quarterly_to_monthly(df):
+    # TODO: Make sure that the date of the quarterly data is month end
+    # Align dates to the end of the month
+    df.index = df.index + pd.offsets.MonthEnd(0)
+
+    # Fill all the nan with na_to_nb_value, we don't want to replace nan with last value
+    na_to_nb_value = -9999999999999
+    df = df.fillna(na_to_nb_value)
+
+    # Create a date range that includes all monthly dates within the range of the quarterly data
+    monthly_index = pd.date_range(start=df.index.min(), end=df.index.max() + pd.DateOffset(months=2), freq='ME')
+
+    # Reindex the DataFrame to the monthly date range and forward-fill the values
+    df_monthly = df.reindex(monthly_index).ffill()
+    df_monthly = df_monthly.replace(na_to_nb_value, np.nan)
+
+    return df_monthly
+
+
+def dic_conv_quarterly_to_monthly(dic):
+    dic_copy = copy.deepcopy(dic)
+    for i in dic_copy:
+        dic_copy[i] = df_conv_quarterly_to_monthly(dic_copy[i])
+    return dic_copy
+
+dic_issuer_fundamental_monthly = dic_conv_quarterly_to_monthly(dic_issuer_fundamental_quarterly)
+
+'''
+df_test_q = dic_issuer_fundamental_quarterly['LT_DEBT']
+df_test_d = dic_issuer_fundamental_daily['LT_DEBT']
+df_test_m = dic_issuer_fundamental_monthly['LT_DEBT']
+'''
+
 
 # Lag the fundamental data by 90 days
 def dic_lag_data(dic,lag):
-    for i in dic:
-        dic[i] = dic[i].shift(lag)
-    return dic
+    dic_copy = copy.deepcopy(dic)
+    for i in dic_copy:
+        dic_copy[i] = dic_copy[i].shift(lag)
+    return dic_copy
 
 
-dic_issuer_fundamental_quarterly = dic_lag_data(dic_issuer_fundamental_quarterly, lag=90)
+dic_issuer_fundamental_daily = dic_lag_data(dic_issuer_fundamental_daily, lag=90)
+
+# Lag the fundamental data by 3 months
+dic_issuer_fundamental_monthly = dic_lag_data(dic_issuer_fundamental_monthly, lag=3)
 
 
 # *** Issuer rating preprocessing ***
@@ -126,7 +176,7 @@ def dic_filtered_date(dic, s_date):
     return dic
 
 
-dic_issuer_fundamental_quarterly = dic_filtered_date(dic_issuer_fundamental_quarterly, s_market_open_date)
+dic_issuer_fundamental_daily = dic_filtered_date(dic_issuer_fundamental_daily, s_market_open_date)
 dic_issuer_market_daily = dic_filtered_date(dic_issuer_market_daily, s_market_open_date)
 dic_issuer_rating_daily = dic_filtered_date(dic_issuer_rating_daily, s_market_open_date)
 dic_market_data_daily = dic_filtered_date(dic_market_data_daily, s_market_open_date)
@@ -242,7 +292,12 @@ df_issuer_rating_upgrade_daily = create_rating_change_df(df_issuer_rating_numeri
 # *** Section: Distance to Default                       ***
 # **********************************************************
 
-
+# TODO : DD
+df_lt_debt_monthly =
+df_st_debt_monthly =
+df_equity_monthly =
+df_equity_vol_monthly =
+df_3m_us_treasury_bill_rate =
 
 
 
