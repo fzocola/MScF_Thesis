@@ -17,6 +17,8 @@ paths.update({'scripts': Path.joinpath(paths.get('main'), 'scripts')})
 # Warnings management
 
 
+
+
 # %%
 # **********************************************************
 # *** Section: DATA MANAGEMENT                           ***
@@ -280,9 +282,7 @@ def create_rating_change_df(df, credit_event_type):
 
     return df_credit_change
 
-
 df_issuer_rating_downgrade_daily = create_rating_change_df(df_issuer_rating_numeric_daily, credit_event_type='downgrade')
-
 df_issuer_rating_upgrade_daily = create_rating_change_df(df_issuer_rating_numeric_daily, credit_event_type='upgrade')
 
 
@@ -294,11 +294,29 @@ df_issuer_rating_upgrade_daily = create_rating_change_df(df_issuer_rating_numeri
 # **********************************************************
 
 # TODO : DD
-df_lt_debt_monthly =
-df_st_debt_monthly =
-df_equity_monthly =
-df_equity_vol_monthly =
-df_3m_us_treasury_bill_rate =
+df_lt_debt_monthly = dic_issuer_fundamental_monthly['LT_DEBT']
+df_st_debt_monthly = dic_issuer_fundamental_monthly['ST_DEBT']
+
+df_mkt_cap_daily = dic_issuer_market_daily['MKT_CAP']
+# Resample by month and take the last available value within the month
+df_mkt_cap_monthly = df_mkt_cap_daily.resample('ME').ffill()
+
+# Compute the volatility (annualised) of the total return using a rolling windows of one year, nan if less than 100 values available
+df_share_price_daily = dic_issuer_market_daily['SHARE_PRICE']
+df_tot_return_daily = dic_issuer_market_daily['TOT_RETURN']
+
+df_equity_vol_daily = df_tot_return_daily.rolling(window=252, min_periods=100).std() * np.sqrt(252)
+# Resample by month and take the last available value within the month
+df_equity_vol_monthly = df_equity_vol_daily.resample('ME').ffill()
+# TODO: Estimate GARCH
+
+
+# 3m US treasury bill rate (annualised)
+df_3m_us_treasury_bill_rate_daily = dic_market_data_daily['RATES']['GB3 Govt']
+# Resample by month and take the last available value within the month
+df_3m_us_treasury_bill_rate_monthly = df_3m_us_treasury_bill_rate_daily.resample('ME').ffill()
+
+
 
 
 
