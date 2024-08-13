@@ -1,3 +1,10 @@
+# *** Scraps ***
+
+'''
+for name, df in dic_fm_data.items():
+    print(name)
+'''
+
 '''
 df_test = dic_market_data_daily['SPX']['px_last']
 s_spx_price = dic_market_data_daily['SPX'].set_index('DATES')['px_last'].dropna()
