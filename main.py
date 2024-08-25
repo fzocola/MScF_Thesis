@@ -381,29 +381,76 @@ sE = 0.4
 T = 1
 t = 0
 
+E = 12540467717.28516
+K = 1357000000.00000
+r = 0.10902
+g = 0
+sE = 0.34231
+T = 1
+t = 0
+
 solution = get_merton_implied_V_sV(E,K,r,g,sE,T,t)
 print(solution)
+print(solution.x)
 '''
 
-def get_df_V_sV():
-    return
+def get_df_V_sV(df_E, df_K, df_sE, s_r, g, T, t):
+    df_V_output = pd.DataFrame(np.nan, index=df_E.index, columns=df_E.columns)
+    df_sV_output = pd.DataFrame(np.nan, index=df_E.index, columns=df_E.columns)
+
+    for c in tqdm(df_E.columns, desc='Merton implied V and sV'):
+        for i in df_E.index:
+            E = df_E.loc[i, c]
+            K = df_K.loc[i, c]
+            sE = df_sE.loc[i, c]
+            r = s_r.loc[i]
+
+            solution = get_merton_implied_V_sV(E=E, K=K, r=r, g=g, sE=sE, T=T, t=t)
+            V = solution.x[0]
+            sV = solution.x[1]
+
+            df_V_output.loc[i, c] = V
+            df_sV_output.loc[i, c] = sV
+
+    return df_V_output, df_sV_output
+
+
+df_ev_monthly, df_ev_vol_monthly = get_df_V_sV(df_E=df_mkt_cap_monthly,
+                                               df_K=df_kmv_debt_monthly,
+                                               df_sE=df_equity_return_vol_monthly,
+                                               s_r=df_3m_us_treasury_bill_rate_monthly, g=0, T=1, t=0)
+
+
+
+
+
 
 '''
-# Create a new DataFrame with the same index and columns, filled with nan
-    df_credit_change = pd.DataFrame(np.nan,
-                                index=df_copy.index,
-                                columns=df_copy.columns)
+g = 0
+T = 1
+t = 0
+
+df_enterprise_value_monthly = pd.DataFrame(-999999.999, index=df_kmv_debt_monthly.index, columns=df_kmv_debt_monthly.columns)
+df_enterprise_value_vol_monthly = pd.DataFrame(-999999.999, index=df_kmv_debt_monthly.index, columns=df_kmv_debt_monthly.columns)
+
+for c in tqdm(df_kmv_debt_monthly.iloc[:,:].columns, desc='Merton implied V and sV'):
+    print(c)
+    for i in df_kmv_debt_monthly.index[:]:
+        print(i)
+        K = df_kmv_debt_monthly.loc[i, c]
+        E = df_mkt_cap_monthly.loc[i, c]
+        sE = df_equity_return_vol_monthly.loc[i, c]
+        r = df_3m_us_treasury_bill_rate_monthly.loc[i]
+        print(K, E, sE, r)
+
+        solution = get_merton_implied_V_sV(E=E, K=K, r=r, g=g, sE=sE, T=T, t=t)
+        V = solution.x[0]
+        sV = solution.x[1]
+        #print(solution)
+        print(V, sV)
+        df_enterprise_value_monthly.loc[i, c] = V
+        df_enterprise_value_vol_monthly.loc[i, c] = sV
 '''
-
-
-
-df_enterprise_value_monthly =
-df_enterprise_value_vol_monthly =
-
-for i in
-
-
-
 
 
 
