@@ -5,6 +5,9 @@ from datetime import datetime, timedelta
 import numpy as np
 from tqdm import tqdm
 import copy
+from scipy import stats
+from scipy.optimize import minimize
+from scipy.optimize import root
 
 # Options
 pd.set_option('future.no_silent_downcasting', True)
@@ -243,7 +246,7 @@ df_issuer_rating_numeric_daily = rating_to_numeric(df_issuer_rating_daily)
 # Creation of the downgrade, upgrade dataframe
 def create_rating_change_df(df, credit_event_type):
     df_copy = df
-    # Create a new DataFrame with the same index and columns, filled with zeros
+    # Create a new DataFrame with the same index and columns, filled with nan
     df_credit_change = pd.DataFrame(np.nan,
                                 index=df_copy.index,
                                 columns=df_copy.columns)
@@ -293,23 +296,29 @@ df_issuer_rating_upgrade_daily = create_rating_change_df(df_issuer_rating_numeri
 # *** Section: Distance to Default                       ***
 # **********************************************************
 
-# TODO : DD
+
+# *** Import data for DD computation ***
+
 df_lt_debt_monthly = dic_issuer_fundamental_monthly['LT_DEBT']
 df_st_debt_monthly = dic_issuer_fundamental_monthly['ST_DEBT']
+# Computing debt level according to KMV assumption for DD computation
+df_kmv_debt_monthly = df_st_debt_monthly + 0.5*df_lt_debt_monthly
 
 df_mkt_cap_daily = dic_issuer_market_daily['MKT_CAP']
 # Resample by month and take the last available value within the month
 df_mkt_cap_monthly = df_mkt_cap_daily.resample('ME').ffill()
 
-# Compute the volatility (annualised) of the total return using a rolling windows of one year, nan if less than 100 values available
+# Compute the volatility (annualised) of the equity total return using a rolling windows of one year,
+# nan if less than 100 values available
+# Get the company share price
 df_share_price_daily = dic_issuer_market_daily['SHARE_PRICE']
-df_tot_return_daily = dic_issuer_market_daily['TOT_RETURN']
-
-df_equity_vol_daily = df_tot_return_daily.rolling(window=252, min_periods=100).std() * np.sqrt(252)
+# Get the equity simple total return (not log return)
+df_equity_tot_return_daily = dic_issuer_market_daily['TOT_RETURN']
+df_equity_return_vol_daily = df_equity_tot_return_daily.rolling(window=252, min_periods=100).std() * np.sqrt(252)
 # Resample by month and take the last available value within the month
-df_equity_vol_monthly = df_equity_vol_daily.resample('ME').ffill()
-# TODO: Estimate GARCH
-
+df_equity_return_vol_monthly = df_equity_return_vol_daily.resample('ME').ffill()
+# TODO: Compute log return
+# TODO: Estimate GARCH ?
 
 # 3m US treasury bill rate (annualised)
 df_3m_us_treasury_bill_rate_daily = dic_market_data_daily['RATES']['GB3 Govt']
@@ -317,8 +326,81 @@ df_3m_us_treasury_bill_rate_daily = dic_market_data_daily['RATES']['GB3 Govt']
 df_3m_us_treasury_bill_rate_monthly = df_3m_us_treasury_bill_rate_daily.resample('ME').ffill()
 
 
+# *** Select data between a date range ***
+
+# Define the date range
+start_date = '2010-12-31'
+end_date = '2023-12-31'
+
+df_kmv_debt_monthly = df_kmv_debt_monthly.loc[start_date:end_date]
+df_mkt_cap_monthly = df_mkt_cap_monthly.loc[start_date:end_date]
+df_equity_return_vol_monthly = df_equity_return_vol_monthly.loc[start_date:end_date]
+df_3m_us_treasury_bill_rate_monthly = df_3m_us_treasury_bill_rate_monthly.loc[start_date:end_date]
 
 
+# *** DD computation ***
+
+def d1(V, K, r, g, sV, T, t):
+    d1 = (np.log(V/K) + ((r-g) + 0.5*sV**2)*(T-t))/(sV*np.sqrt(T-t))
+    return d1
+
+def d2(V, K, r, g, sV, T, t):
+    d2 = d1(V, K, r, g, sV, T, t) - sV*np.sqrt(T-t)
+    return d2
+
+'''
+d1(V=100,K=50,r=0.05,g=0,sV=0.1,T=1,t=0)
+d2(V=100,K=50,r=0.05,g=0,sV=0.1,T=1,t=0)
+'''
+
+# Estimation of Vt and sV - Method 1: Fixing Vt
+
+
+# Estimation of Vt and sV - Method 2: Implied Vt and sV from Merton Model
+def get_merton_implied_V_sV(E, K, r, g, sE, T, t):
+
+    def merton_V_sV_equations(vars):
+        V, sV = vars
+        eq1 = np.exp(-r*(T-t)) * (V * np.exp((r-g) * (T-t)) * stats.norm.cdf(d1(V=V, K=K, r=r, g=g, sV=sV, T=T, t=t))
+                                 - K * stats.norm.cdf(d2(V=V, K=K, r=r, g=g, sV=sV, T=T, t=t))) - E
+        eq2 = sE * E - sV * V * stats.norm.cdf(d1(V=V, K=K, r=r, g=g, sV=sV, T=T, t=t))
+        return [eq1, eq2]
+
+    x0 = np.array([E+K, (E / (E+K)) * sE])
+
+    solution = root(fun=merton_V_sV_equations, x0=x0, method='hybr', tol=None, options=None)
+
+    return solution
+
+'''
+E = 20
+K = 99.46
+r = 0.1
+g = 0
+sE = 0.4
+T = 1
+t = 0
+
+solution = get_merton_implied_V_sV(E,K,r,g,sE,T,t)
+print(solution)
+'''
+
+def get_df_V_sV():
+    return
+
+'''
+# Create a new DataFrame with the same index and columns, filled with nan
+    df_credit_change = pd.DataFrame(np.nan,
+                                index=df_copy.index,
+                                columns=df_copy.columns)
+'''
+
+
+
+df_enterprise_value_monthly =
+df_enterprise_value_vol_monthly =
+
+for i in
 
 
 
