@@ -167,3 +167,32 @@ s_issuer_rating_daily_numeric_unique = pd.unique(df_issuer_rating_daily.values.r
 '''
 
 
+'''
+g = 0
+T = 1
+t = 0
+
+df_enterprise_value_monthly = pd.DataFrame(-999999.999, index=df_kmv_debt_monthly.index, columns=df_kmv_debt_monthly.columns)
+df_enterprise_value_vol_monthly = pd.DataFrame(-999999.999, index=df_kmv_debt_monthly.index, columns=df_kmv_debt_monthly.columns)
+
+for c in tqdm(df_kmv_debt_monthly.iloc[:,:].columns, desc='Merton implied V and sV'):
+    print(c)
+    for i in df_kmv_debt_monthly.index[:]:
+        print(i)
+        K = df_kmv_debt_monthly.loc[i, c]
+        E = df_mkt_cap_monthly.loc[i, c]
+        sE = df_equity_return_vol_monthly.loc[i, c]
+        r = df_3m_us_treasury_bill_rate_monthly.loc[i]
+        print(K, E, sE, r)
+
+        solution = get_merton_implied_V_sV(E=E, K=K, r=r, g=g, sE=sE, T=T, t=t)
+        V = solution.x[0]
+        sV = solution.x[1]
+        #print(solution)
+        print(V, sV)
+        df_enterprise_value_monthly.loc[i, c] = V
+        df_enterprise_value_vol_monthly.loc[i, c] = sV
+'''
+
+
+

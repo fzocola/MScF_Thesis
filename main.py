@@ -320,6 +320,7 @@ df_equity_return_vol_monthly = df_equity_return_vol_daily.resample('ME').ffill()
 # TODO: Compute log return
 # TODO: Estimate GARCH ?
 
+# TODO: change 3m rate with long term average
 # 3m US treasury bill rate (annualised)
 df_3m_us_treasury_bill_rate_daily = dic_market_data_daily['RATES']['GB3 Govt']
 # Resample by month and take the last available value within the month
@@ -420,37 +421,26 @@ df_ev_monthly, df_ev_vol_monthly = get_df_V_sV(df_E=df_mkt_cap_monthly,
                                                df_sE=df_equity_return_vol_monthly,
                                                s_r=df_3m_us_treasury_bill_rate_monthly, g=0, T=1, t=0)
 
+def df_DD(df_V, df_K, df_sV, s_r, g, T, t):
+    df_DD_output = pd.DataFrame(np.nan, index=df_V.index, columns=df_V.columns)
 
+    for c in tqdm(df_V.columns, desc='DD Computation'):
+        for i in df_V.index:
+            V = df_V.loc[i, c]
+            K = df_K.loc[i, c]
+            sV = df_sV.loc[i, c]
+            r = s_r.loc[i]
+            DD = d1(V, K, r, g, sV, T, t)
 
+            df_DD_output.loc[i, c] = DD
 
+    return df_DD_output
 
+df_DD_monthly = df_DD(df_V=df_ev_monthly,
+                      df_K=df_kmv_debt_monthly,
+                      df_sV=df_ev_vol_monthly,
+                      s_r=df_3m_us_treasury_bill_rate_monthly, g=0, T=1, t=0)
 
-'''
-g = 0
-T = 1
-t = 0
-
-df_enterprise_value_monthly = pd.DataFrame(-999999.999, index=df_kmv_debt_monthly.index, columns=df_kmv_debt_monthly.columns)
-df_enterprise_value_vol_monthly = pd.DataFrame(-999999.999, index=df_kmv_debt_monthly.index, columns=df_kmv_debt_monthly.columns)
-
-for c in tqdm(df_kmv_debt_monthly.iloc[:,:].columns, desc='Merton implied V and sV'):
-    print(c)
-    for i in df_kmv_debt_monthly.index[:]:
-        print(i)
-        K = df_kmv_debt_monthly.loc[i, c]
-        E = df_mkt_cap_monthly.loc[i, c]
-        sE = df_equity_return_vol_monthly.loc[i, c]
-        r = df_3m_us_treasury_bill_rate_monthly.loc[i]
-        print(K, E, sE, r)
-
-        solution = get_merton_implied_V_sV(E=E, K=K, r=r, g=g, sE=sE, T=T, t=t)
-        V = solution.x[0]
-        sV = solution.x[1]
-        #print(solution)
-        print(V, sV)
-        df_enterprise_value_monthly.loc[i, c] = V
-        df_enterprise_value_vol_monthly.loc[i, c] = sV
-'''
 
 
 
