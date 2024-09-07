@@ -143,7 +143,6 @@ df_test_d = dic_issuer_fundamental_daily['LT_DEBT']
 df_test_m = dic_issuer_fundamental_monthly['LT_DEBT']
 '''
 
-
 # Lag the fundamental data by 90 days
 def dic_lag_data(dic,lag):
     dic_copy = copy.deepcopy(dic)
@@ -151,14 +150,15 @@ def dic_lag_data(dic,lag):
         dic_copy[i] = dic_copy[i].shift(lag)
     return dic_copy
 
-
 dic_issuer_fundamental_daily = dic_lag_data(dic_issuer_fundamental_daily, lag=90)
 
 # Lag the fundamental data by 3 months
 dic_issuer_fundamental_monthly = dic_lag_data(dic_issuer_fundamental_monthly, lag=3)
 
+
+# *** Issuer rating preprocessing 1 - before date filtering **
 # TODO: check functions output - add dic copy
-# Issuer rating preprocessing 1 - before date filtering
+
 def dic_rating_preprocessing_1(dic):
     dic_copy = copy.deepcopy(dic)
     for i in dic_copy:
@@ -170,7 +170,8 @@ def dic_rating_preprocessing_1(dic):
 dic_issuer_rating_daily = dic_rating_preprocessing_1(dic_issuer_rating_daily)
 
 
-# Date filtering
+# *** Date filtering ***
+
 def df_filtered_date(df, s_date):
     df_copy = df
     df_copy = df_copy[df_copy.index.isin(s_date)]
@@ -188,7 +189,6 @@ dic_issuer_fundamental_daily = dic_filtered_date(dic_issuer_fundamental_daily, s
 dic_issuer_market_daily = dic_filtered_date(dic_issuer_market_daily, s_market_open_date)
 dic_issuer_rating_daily = dic_filtered_date(dic_issuer_rating_daily, s_market_open_date)
 dic_market_data_daily = dic_filtered_date(dic_market_data_daily, s_market_open_date)
-
 
 
 # *** Issuer rating preprocessing_2 ***
@@ -288,6 +288,18 @@ def create_rating_change_df(df, credit_event_type):
 df_issuer_rating_downgrade_daily = create_rating_change_df(df_issuer_rating_numeric_daily, credit_event_type='downgrade')
 df_issuer_rating_upgrade_daily = create_rating_change_df(df_issuer_rating_numeric_daily, credit_event_type='upgrade')
 
+# *** Convert daily data to monthly data ***
+
+'''
+def dic_conv_daily_to_monthly(dic):
+    dic_copy = copy.deepcopy(dic)
+    for i in dic_copy:
+        dic_copy[i] = dic_copy[i].resample('ME').ffill()
+    return dic_copy
+'''''
+
+df_issuer_rating_downgrade_monthly = df_issuer_rating_downgrade_daily.resample('ME').ffill()
+df_issuer_rating_upgrade_monthly = df_issuer_rating_upgrade_daily.resample('ME').ffill()
 
 
 
@@ -320,11 +332,17 @@ df_equity_return_vol_monthly = df_equity_return_vol_daily.resample('ME').ffill()
 # TODO: Compute log return
 # TODO: Estimate GARCH ?
 
-# TODO: change 3m rate with long term average
 # 3m US treasury bill rate (annualised)
-df_3m_us_treasury_bill_rate_daily = dic_market_data_daily['RATES']['GB3 Govt']
+s_3m_us_treasury_bill_rate_daily = dic_market_data_daily['RATES']['GB3 Govt'] / 100
+# TODO: change 3m rate with long term average ?
+'''
+# Calculate the average of the 3m US treasury bill rate series
+treasury_bill_rate_daily_average = s_3m_us_treasury_bill_rate_daily.mean()
+# Replace all the values in the series with the series average
+s_3m_us_treasury_bill_rate_daily = s_3m_us_treasury_bill_rate_daily.apply(lambda x: treasury_bill_rate_daily_average)
+'''
 # Resample by month and take the last available value within the month
-df_3m_us_treasury_bill_rate_monthly = df_3m_us_treasury_bill_rate_daily.resample('ME').ffill()
+s_3m_us_treasury_bill_rate_monthly = s_3m_us_treasury_bill_rate_daily.resample('ME').ffill()
 
 
 # *** Select data between a date range ***
@@ -336,7 +354,7 @@ end_date = '2023-12-31'
 df_kmv_debt_monthly = df_kmv_debt_monthly.loc[start_date:end_date]
 df_mkt_cap_monthly = df_mkt_cap_monthly.loc[start_date:end_date]
 df_equity_return_vol_monthly = df_equity_return_vol_monthly.loc[start_date:end_date]
-df_3m_us_treasury_bill_rate_monthly = df_3m_us_treasury_bill_rate_monthly.loc[start_date:end_date]
+s_3m_us_treasury_bill_rate_monthly = s_3m_us_treasury_bill_rate_monthly.loc[start_date:end_date]
 
 
 # *** DD computation ***
@@ -419,7 +437,7 @@ def get_df_V_sV(df_E, df_K, df_sE, s_r, g, T, t):
 df_ev_monthly, df_ev_vol_monthly = get_df_V_sV(df_E=df_mkt_cap_monthly,
                                                df_K=df_kmv_debt_monthly,
                                                df_sE=df_equity_return_vol_monthly,
-                                               s_r=df_3m_us_treasury_bill_rate_monthly, g=0, T=1, t=0)
+                                               s_r=s_3m_us_treasury_bill_rate_monthly, g=0, T=1, t=0)
 
 def df_DD(df_V, df_K, df_sV, s_r, g, T, t):
     df_DD_output = pd.DataFrame(np.nan, index=df_V.index, columns=df_V.columns)
@@ -439,7 +457,89 @@ def df_DD(df_V, df_K, df_sV, s_r, g, T, t):
 df_DD_monthly = df_DD(df_V=df_ev_monthly,
                       df_K=df_kmv_debt_monthly,
                       df_sV=df_ev_vol_monthly,
-                      s_r=df_3m_us_treasury_bill_rate_monthly, g=0, T=1, t=0)
+                      s_r=s_3m_us_treasury_bill_rate_monthly, g=0, T=1, t=0)
+
+
+# %%
+# **********************************************************
+# *** Section: Variables definition                      ***
+# **********************************************************
+
+
+# *** Firm specific variables ***
+
+# Z-score variables
+df_wc_to_ta_monthly = dic_issuer_fundamental_monthly['WORK_CAP'] / dic_issuer_fundamental_monthly['TOT_ASSET']
+df_re_to_ta_monthly = dic_issuer_fundamental_monthly['RET_EARN'] / dic_issuer_fundamental_monthly['TOT_ASSET']
+df_ebit_to_ta_monthly = dic_issuer_fundamental_monthly['EBIT'] / dic_issuer_fundamental_monthly['TOT_ASSET']
+df_me_to_be_monthly = df_mkt_cap_monthly / dic_issuer_fundamental_monthly['BOOK_EQUITY']
+df_sales_to_ta_monthly = dic_issuer_fundamental_monthly['SALES'] / dic_issuer_fundamental_monthly['TOT_ASSET']
+
+# Other credit metrics
+df_coverage_monthly = dic_issuer_fundamental_monthly['EBIT'] / dic_issuer_fundamental_monthly['INTEREST_EXP']
+df_net_leverage_monthly = (dic_issuer_fundamental_monthly['LT_DEBT'] + dic_issuer_fundamental_monthly['ST_DEBT'] - dic_issuer_fundamental_monthly['CASH']) / dic_issuer_fundamental_monthly['EBITDA']
+
+
+# *** Common variables ***
+s_spx_level_daily = dic_market_data_daily['SPX']['px_last']
+s_spx_level_monthly = s_spx_level_daily.resample('ME').ffill()
+s_spx_1y_trailing_return_monthly = s_spx_level_monthly.pct_change(periods=12)
+
+s_3m_us_treasury_bill_rate_monthly = s_3m_us_treasury_bill_rate_monthly
+
+
+# *** Add all variables in a dictionary ***
+
+dic_variables_monthly = {}
+dic_dep_variables_firm_monthly = {}
+dic_ind_variables_firm_monthly = {}
+dic_ind_variables_common_monthly = {}
+
+# Dependent variables
+dic_dep_variables_firm_monthly['next_12m_downgrade'] = df_issuer_rating_downgrade_monthly
+dic_dep_variables_firm_monthly['next_12m_upgrade'] = df_issuer_rating_upgrade_monthly
+
+# Independent variables - Firm specific variables
+dic_ind_variables_firm_monthly['DD'] = df_DD_monthly
+
+dic_ind_variables_firm_monthly['wc_to_ta'] = df_wc_to_ta_monthly
+dic_ind_variables_firm_monthly['re_to_ta'] = df_re_to_ta_monthly
+dic_ind_variables_firm_monthly['ebit_to_ta'] = df_ebit_to_ta_monthly
+dic_ind_variables_firm_monthly['me_to_be'] = df_me_to_be_monthly
+dic_ind_variables_firm_monthly['sales_to_ta'] = df_sales_to_ta_monthly
+
+dic_ind_variables_firm_monthly['coverage'] = df_coverage_monthly
+dic_ind_variables_firm_monthly['net_leverage'] = df_net_leverage_monthly
+
+# Independent variables - Common variables
+dic_ind_variables_common_monthly['spx_1y_trailing_return'] = s_spx_1y_trailing_return_monthly
+dic_ind_variables_common_monthly['3m_us_treasury_bill_rate'] = s_3m_us_treasury_bill_rate_monthly
+
+# Combine the 2 dictionary in one
+dic_variables_monthly['dep_var_firm'] = dic_dep_variables_firm_monthly
+dic_variables_monthly['ind_var_firm'] = dic_ind_variables_firm_monthly
+dic_variables_monthly['ind_var_common'] = dic_ind_variables_common_monthly
+
+# Select data between a date range
+def dic_define_date_range(dic, start, end):
+    dic_copy = copy.deepcopy(dic)
+    for i in dic_copy:
+        dic_copy[i] = dic_copy[i].loc[start:end]
+    return dic_copy
+
+def dic_parent_define_date_range(dic, start, end):
+    dic_copy = copy.deepcopy(dic)
+    for i in dic_copy:
+        dic_copy[i] = dic_define_date_range(dic_copy[i], start, end)
+    return dic_copy
+
+
+start_date = '2010-12-31'
+end_date = '2023-12-31'
+
+dic_variables_monthly = dic_parent_define_date_range(dic_variables_monthly, start_date, end_date)
+
+
 
 
 
