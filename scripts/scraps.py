@@ -194,5 +194,87 @@ for c in tqdm(df_kmv_debt_monthly.iloc[:,:].columns, desc='Merton implied V and 
         df_enterprise_value_vol_monthly.loc[i, c] = sV
 '''
 
+'''
+df_copy = df_issuer_rating_numeric_daily
+
+
+# Create a new DataFrame with the same index and columns, filled with nan
+df_days_since_change = pd.DataFrame(np.nan,
+                            index=df_copy.index,
+                            columns=df_copy.columns)
+
+
+for issuer in tqdm(df_copy.iloc[:, :].columns, desc='Creation df nb days since last change'):
+    # Identify rating changes (True where the rating has changed)
+    rating_change = df_copy[issuer] != df_copy[issuer].shift(1)
+
+    # Count number of rating change
+    count_rating_change = rating_change.cumsum()
+
+    # For each group, subtract the first date of the group from all dates in that group
+    time_since_last_change = df_copy[issuer].index.to_series().groupby(count_rating_change).transform(lambda x: x - x.iloc[0])
+
+    # Convert to days
+    time_since_last_change_in_days = time_since_last_change.dt.days
+
+    df_copy[issuer] = time_since_last_change_in_days
+'''
+
+'''
+#df_issuer_rating_nb_days_last_change_monthly = df_issuer_rating_nb_days_last_change_daily.resample('ME').ffill()
+
+
+df_copy_daily = copy.deepcopy(df_issuer_rating_nb_days_last_change_daily)
+df_copy_monthly = df_copy_daily.resample('ME').ffill()
+
+
+# Create a new DataFrame with the same index and columns, filled with nan
+df_output = pd.DataFrame(np.nan, index=df_copy_monthly.index, columns=df_copy_monthly.columns)
+
+
+for issuer in tqdm(df_copy_monthly.iloc[:, :].columns, desc='Creation of nb of months since last rating change df'):
+    # Find the last available date within each month
+    s_last_available_dates = df_copy_daily[issuer].groupby(df_copy_daily[issuer].index.to_period('M')).apply(lambda x: x.index.max())
+    # Set the index of the resampled data to the last available date within each month
+    df_copy_monthly[issuer].index = s_last_available_dates
+    # Find the rating change day
+    s_rating_change_date = (df_copy_monthly[issuer].index - pd.to_timedelta(df_copy_monthly[issuer], unit='D')).resample('ME').ffill()
+
+    for index_date, change_date in s_rating_change_date.items():
+        # Calculate the nb of months since last rating change
+        months_difference = relativedelta(index_date, change_date).months + (relativedelta(index_date, change_date).years * 12)
+        print(months_difference)
+        df_output[issuer][index_date] = months_difference
+
+'''
+
+'''
+df_issuer_rating_nb_months_last_change_monthly
+'''
+'''
+dic = dic_variables_monthly['ind_var_firm']
+df_lag = df_issuer_rating_nb_months_last_change_monthly
+dic_tmp = {}
+
+for var in dic:
+    df_tmp = pd.DataFrame(np.nan, index=dic[var].index, columns=dic[var].columns)
+
+    for firm in tqdm(dic[var].iloc[:, :], desc="Creating df delta for {}".format(var)):
+
+        for i in dic[var][firm].index:
+            # Get the position of the specific index in the Series
+            position = dic[var][firm].index.get_loc(i)
+
+            if df_lag[firm].loc[i] < 12:
+                if position - int(df_lag[firm].loc[i]) >= 0:
+                    var_delta = dic[var][firm].loc[i] - dic[var][firm].iloc[position - int(df_lag[firm].loc[i])]
+                    df_tmp.loc[i, firm] = var_delta
+            else:
+                if position - 12 >= 0:
+                    var_delta = dic[var][firm].loc[i] - dic[var][firm].iloc[position - 12]
+                    df_tmp.loc[i, firm] = var_delta
+
+    dic_tmp['delta_{}'.format(var)] = df_tmp
+'''
 
 

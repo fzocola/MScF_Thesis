@@ -8,6 +8,7 @@ import copy
 from scipy import stats
 from scipy.optimize import minimize
 from scipy.optimize import root
+from dateutil.relativedelta import relativedelta
 
 # Options
 pd.set_option('future.no_silent_downcasting', True)
@@ -247,9 +248,7 @@ df_issuer_rating_numeric_daily = rating_to_numeric(df_issuer_rating_daily)
 def create_rating_change_df(df, credit_event_type):
     df_copy = df
     # Create a new DataFrame with the same index and columns, filled with nan
-    df_credit_change = pd.DataFrame(np.nan,
-                                index=df_copy.index,
-                                columns=df_copy.columns)
+    df_credit_change = pd.DataFrame(np.nan, index=df_copy.index, columns=df_copy.columns)
 
     # Set last_date
     last_date = df_copy.index[-1] - pd.DateOffset(years=1)
@@ -288,6 +287,32 @@ def create_rating_change_df(df, credit_event_type):
 df_issuer_rating_downgrade_daily = create_rating_change_df(df_issuer_rating_numeric_daily, credit_event_type='downgrade')
 df_issuer_rating_upgrade_daily = create_rating_change_df(df_issuer_rating_numeric_daily, credit_event_type='upgrade')
 
+# TODO: Check function that create a new dataframe, df_copy = df (is not creating a copy of the dataframe)
+# Creation number of days since last change dataframe
+def df_nd_days_since_last_change(df):
+    df_copy = copy.deepcopy(df)
+
+    for issuer in tqdm(df_copy.iloc[:, :].columns, desc='Creation nb days since last change df'):
+        # Identify rating changes (True where the rating has changed)
+        rating_change = df_copy[issuer] != df_copy[issuer].shift(1)
+
+        # Count number of rating change
+        count_rating_change = rating_change.cumsum()
+
+        # For each group, subtract the first date of the group from all dates in that group
+        time_since_last_change = df_copy[issuer].index.to_series().groupby(count_rating_change).transform(
+            lambda x: x - x.iloc[0])
+
+        # Convert to days
+        time_since_last_change_in_days = time_since_last_change.dt.days
+
+        df_copy[issuer] = time_since_last_change_in_days
+
+    return df_copy
+
+df_issuer_rating_nb_days_last_change_daily = df_nd_days_since_last_change(df_issuer_rating_numeric_daily)
+
+
 # *** Convert daily data to monthly data ***
 
 '''
@@ -301,6 +326,32 @@ def dic_conv_daily_to_monthly(dic):
 df_issuer_rating_downgrade_monthly = df_issuer_rating_downgrade_daily.resample('ME').ffill()
 df_issuer_rating_upgrade_monthly = df_issuer_rating_upgrade_daily.resample('ME').ffill()
 
+# Create a df with the nb of months since last rating change
+def df_nb_months_since_last_rating_change(df):
+    df_copy_daily = copy.deepcopy(df)
+    df_copy_monthly = df_copy_daily.resample('ME').ffill()
+
+    # Create a new DataFrame with the same index and columns, filled with nan
+    df_output = pd.DataFrame(np.nan, index=df_copy_monthly.index, columns=df_copy_monthly.columns)
+
+    for issuer in tqdm(df_copy_monthly.iloc[:, :].columns, desc='Creation of months since last change df'):
+        # Find the last available date within each month
+        s_last_available_dates = df_copy_daily[issuer].groupby(df_copy_daily[issuer].index.to_period('M')).apply(lambda x: x.index.max())
+        # Set the index of the resampled data to the last available date within each month
+        df_copy_monthly[issuer].index = s_last_available_dates
+        # Find the rating change day
+        s_rating_change_date = (df_copy_monthly[issuer].index - pd.to_timedelta(df_copy_monthly[issuer], unit='D')).resample('ME').ffill()
+
+        for index_date, change_date in s_rating_change_date.items():
+            # Calculate the nb of months since last rating change
+            months_difference = relativedelta(index_date, change_date).months + (relativedelta(index_date, change_date).years * 12)
+
+            df_output.loc[index_date, issuer] = months_difference
+
+    return df_output
+
+df_issuer_rating_nb_months_last_change_monthly = df_nb_months_since_last_rating_change(df_issuer_rating_nb_days_last_change_daily)
+
 
 
 # %%
@@ -313,8 +364,9 @@ df_issuer_rating_upgrade_monthly = df_issuer_rating_upgrade_daily.resample('ME')
 
 df_lt_debt_monthly = dic_issuer_fundamental_monthly['LT_DEBT']
 df_st_debt_monthly = dic_issuer_fundamental_monthly['ST_DEBT']
-# Computing debt level according to KMV assumption for DD computation
+# Computing debt level according to KMV assumption for DD computation and replace all 0 by nan
 df_kmv_debt_monthly = df_st_debt_monthly + 0.5*df_lt_debt_monthly
+df_kmv_debt_monthly = df_kmv_debt_monthly.replace(0, np.nan)
 
 df_mkt_cap_daily = dic_issuer_market_daily['MKT_CAP']
 # Resample by month and take the last available value within the month
@@ -411,6 +463,7 @@ t = 0
 solution = get_merton_implied_V_sV(E,K,r,g,sE,T,t)
 print(solution)
 print(solution.x)
+print(solution.success)
 '''
 
 def get_df_V_sV(df_E, df_K, df_sE, s_r, g, T, t):
@@ -425,6 +478,8 @@ def get_df_V_sV(df_E, df_K, df_sE, s_r, g, T, t):
             r = s_r.loc[i]
 
             solution = get_merton_implied_V_sV(E=E, K=K, r=r, g=g, sE=sE, T=T, t=t)
+            #if not solution.success:
+                #print(c, i)
             V = solution.x[0]
             sV = solution.x[1]
 
@@ -475,6 +530,10 @@ df_ebit_to_ta_monthly = dic_issuer_fundamental_monthly['EBIT'] / dic_issuer_fund
 df_me_to_be_monthly = df_mkt_cap_monthly / dic_issuer_fundamental_monthly['BOOK_EQUITY']
 df_sales_to_ta_monthly = dic_issuer_fundamental_monthly['SALES'] / dic_issuer_fundamental_monthly['TOT_ASSET']
 
+# Duan (2012)
+df_cash_to_ta_monthly = dic_issuer_fundamental_monthly['CASH'] / dic_issuer_fundamental_monthly['TOT_ASSET']
+df_size_monthly = np.log(df_mkt_cap_monthly)
+
 # Other credit metrics
 df_coverage_monthly = dic_issuer_fundamental_monthly['EBIT'] / dic_issuer_fundamental_monthly['INTEREST_EXP']
 df_net_leverage_monthly = (dic_issuer_fundamental_monthly['LT_DEBT'] + dic_issuer_fundamental_monthly['ST_DEBT'] - dic_issuer_fundamental_monthly['CASH']) / dic_issuer_fundamental_monthly['EBITDA']
@@ -508,8 +567,11 @@ dic_ind_variables_firm_monthly['ebit_to_ta'] = df_ebit_to_ta_monthly
 dic_ind_variables_firm_monthly['me_to_be'] = df_me_to_be_monthly
 dic_ind_variables_firm_monthly['sales_to_ta'] = df_sales_to_ta_monthly
 
-dic_ind_variables_firm_monthly['coverage'] = df_coverage_monthly
-dic_ind_variables_firm_monthly['net_leverage'] = df_net_leverage_monthly
+dic_ind_variables_firm_monthly['cash_to_ta'] = df_cash_to_ta_monthly
+dic_ind_variables_firm_monthly['size'] = df_size_monthly
+
+#dic_ind_variables_firm_monthly['coverage'] = df_coverage_monthly
+#dic_ind_variables_firm_monthly['net_leverage'] = df_net_leverage_monthly
 
 # Independent variables - Common variables
 dic_ind_variables_common_monthly['spx_1y_trailing_return'] = s_spx_1y_trailing_return_monthly
@@ -540,13 +602,52 @@ end_date = '2023-12-31'
 dic_variables_monthly = dic_parent_define_date_range(dic_variables_monthly, start_date, end_date)
 
 
+# *** Compute trend for firm specific variables: difference between current value and 12 months ago value ***
+
+def dic_ind_var_firm_trend(dic_variables, df_lag):
+
+    dic = dic_variables['ind_var_firm']
+    dic_tmp = {}
+
+    for var in dic:
+        df_tmp = pd.DataFrame(np.nan, index=dic[var].index, columns=dic[var].columns)
+
+        for firm in tqdm(dic[var].iloc[:, :], desc="Creating df trend for {}".format(var)):
+
+            for i in dic[var][firm].index:
+                # Get the position of the specific index in the Series
+                position = dic[var][firm].index.get_loc(i)
+
+                if df_lag[firm].loc[i] < 12:
+                    if position - int(df_lag[firm].loc[i]) >= 0:
+                        var_delta = dic[var][firm].loc[i] - dic[var][firm].iloc[position - int(df_lag[firm].loc[i])]
+                        df_tmp.loc[i, firm] = var_delta
+                else:
+                    if position - 12 >= 0:
+                        var_delta = dic[var][firm].loc[i] - dic[var][firm].iloc[position - 12]
+                        df_tmp.loc[i, firm] = var_delta
+
+        dic_tmp['{}_trend'.format(var)] = df_tmp
+
+    dic_variables['ind_var_firm_trend'] = dic_tmp
+
+    return dic_variables
+
+dic_variables_monthly = dic_ind_var_firm_trend(dic_variables_monthly, df_issuer_rating_nb_months_last_change_monthly)
 
 
 
 
 # %%
 # **********************************************************
-# *** Section: Summary Statics                           ***
+# *** Section: Summary Statics - Data Visualization      ***
+# **********************************************************
+
+
+
+# %%
+# **********************************************************
+# *** Section:  Logit regression                         ***
 # **********************************************************
 
 
