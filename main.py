@@ -9,6 +9,8 @@ from scipy import stats
 from scipy.optimize import minimize
 from scipy.optimize import root
 from dateutil.relativedelta import relativedelta
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 # Options
 pd.set_option('future.no_silent_downcasting', True)
@@ -635,21 +637,89 @@ def dic_ind_var_firm_trend(dic_variables, df_lag):
 
 dic_variables_monthly = dic_ind_var_firm_trend(dic_variables_monthly, df_issuer_rating_nb_months_last_change_monthly)
 
+start_date = '2011-12-31'
+end_date = '2022-12-31'
 
+dic_variables_monthly = dic_parent_define_date_range(dic_variables_monthly, start_date, end_date)
+
+
+# *** Combine all data in a dataframe ***
+
+def df_combined_all_data(dic):
+    # firm variables
+    ls_output = []
+    data_type = ['dep_var_firm', 'ind_var_firm', 'ind_var_firm_trend']
+    for i in data_type:
+        dic_tpm = dic[i]
+
+        ls_reshaped_data = []
+        for variable, df in dic_tpm.items():
+            df.index.name = 'DATES'
+            df_melt = pd.melt(df.reset_index(), id_vars=['DATES'], var_name='Issuer', value_vars=df.columns,
+                              value_name=variable)
+            ls_reshaped_data.append(df_melt)
+
+        # Merge all reshaped DataFrames on the date 'DATES' and 'Issuer' columns
+        df_tpm = ls_reshaped_data[0]
+        for df in ls_reshaped_data[1:]:
+            df_tpm = pd.merge(df_tpm, df, on=['DATES', 'Issuer'])
+
+        ls_output.append(df_tpm)
+
+    df_output = ls_output[0]
+    for df in ls_output[1:]:
+        df_output = pd.merge(df_output, df, on=['DATES', 'Issuer'])
+
+    # common variables
+    ls_output = []
+    data_type = ['ind_var_common']
+
+    for i in data_type:
+        dic_tpm = dic[i]
+
+        ls_reshaped_data = []
+        for variable, df in dic_tpm.items():
+            df.index.name = 'DATES'
+            df.name = variable
+            ls_reshaped_data.append(df)
+
+        # Merge all reshaped DataFrames on the date 'DATES' and 'Issuer' columns
+        df_tpm = ls_reshaped_data[0]
+        for df in ls_reshaped_data[1:]:
+            df_tpm = pd.merge(df_tpm, df, on=['DATES'])
+
+        ls_output.append(df_tpm)
+
+    for df in ls_output[:]:
+        df_output = pd.merge(df_output, df, on=['DATES'])
+
+    return df_output
+
+df_database = df_combined_all_data(dic_variables_monthly)
+
+# Drop all rows that contain any NaN values
+df_database = df_database.dropna()
 
 
 # %%
 # **********************************************************
-# *** Section: Summary Statics - Data Visualization      ***
+# *** Section: Summary Statics - Data Exploration        ***
 # **********************************************************
 
+'''
+df_database['next_12m_downgrade'].value_counts()
+df_database['next_12m_upgrade'].value_counts()
+
+df_database.drop(['DATES','Issuer'], axis=1, inplace=True)
+zzz = df_database.groupby('next_12m_downgrade').mean()
+zzzz = df_database.groupby('next_12m_upgrade').mean()
+'''
 
 
 # %%
 # **********************************************************
 # *** Section:  Logit regression                         ***
 # **********************************************************
-
 
 
 

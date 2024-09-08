@@ -277,4 +277,51 @@ for var in dic:
     dic_tmp['delta_{}'.format(var)] = df_tmp
 '''
 
+'''
+# firm variables
+ls_output = []
+data_type = ['dep_var_firm', 'ind_var_firm', 'ind_var_firm_trend']
+for i in data_type:
+    dic_tpm = dic_variables_monthly[i]
+
+    ls_reshaped_data = []
+    for variable, df in dic_tpm.items():
+        df.index.name = 'DATES'
+        df_melt = pd.melt(df.reset_index(), id_vars=['DATES'], var_name='Issuer', value_vars=df.columns, value_name=variable)
+        ls_reshaped_data.append(df_melt)
+
+    # Merge all reshaped DataFrames on the date 'DATES' and 'Issuer' columns
+    df_tpm = ls_reshaped_data[0]
+    for df in ls_reshaped_data[1:]:
+        df_tpm = pd.merge(df_tpm, df, on=['DATES', 'Issuer'])
+
+    ls_output.append(df_tpm)
+
+df_output = ls_output[0]
+for df in ls_output[1:]:
+    df_output = pd.merge(df_output, df, on=['DATES', 'Issuer'])
+
+# common variables
+ls_output = []
+data_type = ['ind_var_common']
+
+for i in data_type:
+    dic_tpm = dic_variables_monthly[i]
+
+    ls_reshaped_data = []
+    for variable, df in dic_tpm.items():
+        df.index.name = 'DATES'
+        df.name = variable
+        ls_reshaped_data.append(df)
+
+    # Merge all reshaped DataFrames on the date 'DATES' and 'Issuer' columns
+    df_tpm = ls_reshaped_data[0]
+    for df in ls_reshaped_data[1:]:
+        df_tpm = pd.merge(df_tpm, df, on=['DATES'])
+
+    ls_output.append(df_tpm)
+
+for df in ls_output[:]:
+    df_output = pd.merge(df_output, df, on=['DATES'])
+'''
 
