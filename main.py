@@ -11,6 +11,8 @@ from scipy.optimize import root
 from dateutil.relativedelta import relativedelta
 import matplotlib.pyplot as plt
 import seaborn as sns
+import pickle
+import time
 
 # Options
 pd.set_option('future.no_silent_downcasting', True)
@@ -282,7 +284,11 @@ def create_rating_change_df(df, credit_event_type):
             if credit_event_type == 'upgrade':
                 rating_change_detected = np.any(future_ratings < rating_tmp)
             # Assign the result
-            df_credit_change.iat[i, df_copy.columns.get_loc(issuer)] = 1 if rating_change_detected else 0
+            if np.isnan(rating_tmp):
+                # if the actual rating is nan put nan for the rating change
+                df_credit_change.iat[i, df_copy.columns.get_loc(issuer)] = np.nan
+            else:
+                df_credit_change.iat[i, df_copy.columns.get_loc(issuer)] = 1 if rating_change_detected else 0
 
     return df_credit_change
 
@@ -534,6 +540,7 @@ df_sales_to_ta_monthly = dic_issuer_fundamental_monthly['SALES'] / dic_issuer_fu
 
 # Duan (2012)
 df_cash_to_ta_monthly = dic_issuer_fundamental_monthly['CASH'] / dic_issuer_fundamental_monthly['TOT_ASSET']
+df_ev_to_ta_monthly = (df_mkt_cap_monthly + dic_issuer_fundamental_monthly['LT_DEBT'] + dic_issuer_fundamental_monthly['ST_DEBT']) / dic_issuer_fundamental_monthly['TOT_ASSET']
 df_size_monthly = np.log(df_mkt_cap_monthly)
 
 # Other credit metrics
@@ -566,7 +573,7 @@ dic_ind_variables_firm_monthly['DD'] = df_DD_monthly
 dic_ind_variables_firm_monthly['wc_to_ta'] = df_wc_to_ta_monthly
 dic_ind_variables_firm_monthly['re_to_ta'] = df_re_to_ta_monthly
 dic_ind_variables_firm_monthly['ebit_to_ta'] = df_ebit_to_ta_monthly
-dic_ind_variables_firm_monthly['me_to_be'] = df_me_to_be_monthly
+dic_ind_variables_firm_monthly['ev_to_ta'] = df_ev_to_ta_monthly
 dic_ind_variables_firm_monthly['sales_to_ta'] = df_sales_to_ta_monthly
 
 dic_ind_variables_firm_monthly['cash_to_ta'] = df_cash_to_ta_monthly
@@ -695,10 +702,15 @@ def df_combined_all_data(dic):
 
     return df_output
 
-df_database = df_combined_all_data(dic_variables_monthly)
+df_data = df_combined_all_data(dic_variables_monthly)
 
 # Drop all rows that contain any NaN values
-df_database = df_database.dropna()
+df_data = df_data.dropna()
+
+# Save data (uncomment)
+with open(Path.joinpath(paths.get('data'), 'df_data.pkl'), 'wb') as file:
+     pickle.dump(df_data, file)
+
 
 
 # %%
@@ -706,14 +718,85 @@ df_database = df_database.dropna()
 # *** Section: Summary Statics - Data Exploration        ***
 # **********************************************************
 
-'''
-df_database['next_12m_downgrade'].value_counts()
-df_database['next_12m_upgrade'].value_counts()
 
-df_database.drop(['DATES','Issuer'], axis=1, inplace=True)
-zzz = df_database.groupby('next_12m_downgrade').mean()
-zzzz = df_database.groupby('next_12m_upgrade').mean()
-'''
+# Load data
+with open(Path.joinpath(paths.get('data'), 'df_data.pkl'), 'rb') as file:
+    df_data = pickle.load(file)
+
+
+# *** Data visualisation ***
+
+# Plot the distribution of the different dependent variables
+sns.set(context='paper', style='ticks', palette='bright', font_scale=1.0)
+fig, ax = plt.subplots(figsize=(12, 8), dpi=300)
+ax.set_title('Proportion of Downgrade', size=28)
+sns.countplot(data=df_data, x='next_12m_downgrade', stat='proportion')
+ax.tick_params(axis='both', labelsize=18)
+ax.set_xlabel('', size=20)
+ax.set_ylabel('Proportion', size=20)
+ax.grid(axis='y', alpha=0.4)
+fig.tight_layout()
+plt.show()
+#fig.savefig(Path.joinpath(paths.get('output'), 'XXXXXXXXX'.png'))
+plt.close()
+
+sns.set(context='paper', style='ticks', palette='bright', font_scale=1.0)
+fig, ax = plt.subplots(figsize=(12, 8), dpi=300)
+ax.set_title('Proportion of Upgrade', size=28)
+sns.countplot(data=df_data, x='next_12m_upgrade', stat='proportion')
+ax.tick_params(axis='both', labelsize=18)
+ax.set_xlabel('', size=20)
+ax.set_ylabel('Proportion', size=20)
+ax.grid(axis='y', alpha=0.4)
+fig.tight_layout()
+plt.show()
+#fig.savefig(Path.joinpath(paths.get('output'), 'XXXXXXXXX'.png'))
+plt.close()
+
+# Plot the distribution of the different independent variables
+df_data_ind_variables = df_data.drop(['DATES', 'Issuer', 'next_12m_downgrade', 'next_12m_upgrade'], axis=1)
+for i in df_data_ind_variables:
+    print(i)
+    sns.set(context='paper', style='ticks', palette='bright', font_scale=1.0)
+    fig, ax = plt.subplots(figsize=(12, 8), dpi=300)
+    ax.set_title('Distribution of {}'.format(i), size=28)
+    sns.histplot(df_data[i], stat='density', kde=False)
+    ax.tick_params(axis='both', labelsize=18)
+    ax.set_xlabel('{}'.format(i), size=20)
+    ax.set_ylabel('Density', size=20)
+    ax.grid(axis='y', alpha=0.4)
+    fig.tight_layout()
+    plt.show()
+    #fig.savefig(Path.joinpath(paths.get('output'), 'XXXXXXXXX'.png'))
+    plt.close()
+    time.sleep(0.5)
+
+
+# *** Summary statistics ***
+df_data_variables = df_data.drop(['DATES', 'Issuer'], axis=1)
+df_data_describe = df_data_variables.describe()
+
+df_data_downgrade = df_data.drop(['DATES', 'Issuer', 'next_12m_upgrade'], axis=1)
+df_downgrade_mean = df_data_variables.groupby('next_12m_downgrade').mean()
+df_data_upgrade = df_data.drop(['DATES', 'Issuer', 'next_12m_downgrade'], axis=1)
+df_upgrade_mean = df_data_variables.groupby('next_12m_upgrade').mean()
+
+
+# %%
+# **********************************************************
+# *** Section: Preprocessing - Over-sampling             ***
+# **********************************************************
+
+
+from sklearn import preprocessing
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import train_test_split
+
+
+
+
+
+
 
 
 # %%

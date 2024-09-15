@@ -325,3 +325,110 @@ for df in ls_output[:]:
     df_output = pd.merge(df_output, df, on=['DATES'])
 '''
 
+'''
+# Plot repartition of weights in EF for each expected return level
+sns.set(context='paper', style='ticks', font_scale=1.0)
+fig, ax = plt.subplots(figsize=(12, 8), dpi=300)
+ax.stackplot(df_sample_EF_plugin['mean'], abs(df_sample_EF_plugin_w))
+ax.set_title('Efficient Frontier Weights', size=28)
+ax.tick_params(axis='both', labelsize=18)
+ax.set_xlabel('Annualised average return', size=20)
+ax.set_ylabel('Cumulative of weights absolute value', size=20)
+fig.tight_layout()
+plt.show()
+fig.savefig(Path.joinpath(paths.get('output'), 'Project1', 'P1_Q1.2_sample_EF_weights.png'))
+plt.close()
+'''
+
+'''
+# Plot distribution of carbon intensity
+sns.set(context='paper', style='ticks', font_scale=1.5)
+fig, ax = plt.subplots(figsize=(12, 8), dpi=300)
+ax.set_title('Distribution of Carbon Intensity (Y=2021)', size=28)
+sns.histplot(df_carb_int_1m.iloc[-1], bins=25, stat='density', kde=False, color='royalblue', edgecolor='white', alpha=0.8)
+sns.kdeplot(df_carb_int_1m.iloc[-1], color='red', lw=3)
+ax.tick_params(axis='both', labelsize=18)
+ax.set_xlim(left=0)
+ax.set_xlabel('Carbon Intensity', size=20)
+ax.set_ylabel('Density', size=20)
+ax.grid(axis='y', alpha=0.4)
+fig.tight_layout()
+plt.show()
+fig.savefig(Path.joinpath(paths.get('output'), 'Project1', 'P1_Q2.1_dist_carbon_intensity.png'))
+plt.close()
+'''
+
+'''
+# Plot DGT test
+sns.set(context='paper', style='ticks', font_scale=2.0)
+fig, ax = plt.subplots(3, sharex=True, figsize=(12, 15), dpi=300)
+i = 0
+for F_N_i in dic_F_N:
+    ax[i].plot(dic_F_N[F_N_i], '8', color='blue')
+    ax[i].plot(df_average_HO, color='black')
+    ax[i].plot(df_quantile_HO_5_plus, color='red', label='Critical value @5%')
+    ax[i].plot(df_quantile_HO_5_minus, color='red')
+    ax[i].plot(df_quantile_HO_1_plus, color='g', label='Critical value @1%')
+    ax[i].plot(df_quantile_HO_1_minus, color='g')
+    ax[i].legend(loc='best', frameon=False, fontsize=12, ncol=2)
+    ax[i].set_title('{} distribution (OS, Long-Only, CF75)'.format(F_N_i), size=20)
+    i += 1
+fig.tight_layout()
+plt.show()
+fig.savefig(Path.joinpath(paths.get('output'), 'Project2', 'P2_Q2.1.3_DGT_test.png'.format(i)))
+plt.close()
+
+'''
+
+'''
+# Plot VaR and ES Skewed t (OS, long-only, CF75)
+sns.set(context='paper', style='ticks', font_scale=1.0)
+fig, ax = plt.subplots(figsize=(12, 8), dpi=300)
+ax.set_title('VaR and ES - GARCH - Skewed t (OS, Long-Only, CF75)', size=28)
+ax.plot(df_VaR_ES_skewed_t['ES_skewed_t'], label='ES @{}%'.format(round(theta_cond * 100)), color='red', lw=3)
+ax.plot(df_VaR_ES_skewed_t['VaR_skewed_t'], label='VaR @{}%'.format(round(theta_cond * 100)), color='black', lw=3)
+ax.tick_params(axis='both', labelsize=18)
+ax.legend(loc='upper left', fontsize=16)
+fig.tight_layout()
+plt.show()
+fig.savefig(Path.joinpath(paths.get('output'), 'Project2', 'P2_Q2.1.4_VaR_ES_skewed_t.png'))
+plt.close()
+'''
+
+'''
+# Plot distribution of carbon intensity
+sns.set(context='paper', style='ticks', font_scale=1.5)
+fig, ax = plt.subplots(figsize=(12, 8), dpi=300)
+ax.set_title('Distribution of Carbon Intensity (Y=2021)', size=28)
+sns.histplot(df_carb_int_1m.iloc[-1], bins=25, stat='density', kde=False, color='royalblue', edgecolor='white', alpha=0.8)
+sns.kdeplot(df_carb_int_1m.iloc[-1], color='red', lw=3)
+ax.tick_params(axis='both', labelsize=18)
+ax.set_xlim(left=0)
+ax.set_xlabel('Carbon Intensity', size=20)
+ax.set_ylabel('Density', size=20)
+ax.grid(axis='y', alpha=0.4)
+fig.tight_layout()
+plt.show()
+fig.savefig(Path.joinpath(paths.get('output'), 'Project1', 'P1_Q2.1_dist_carbon_intensity.png'))
+plt.close()
+'''
+
+'''
+df_data['next_12m_downgrade'].value_counts()
+df_data['next_12m_upgrade'].value_counts()
+
+df_data.drop(['DATES','Issuer'], axis=1, inplace=True)
+zzz = df_data.groupby('next_12m_downgrade').mean()
+zzzz = df_data.groupby('next_12m_upgrade').mean()
+'''
+
+'''
+
+zzzz = dic_variables_monthly['ind_var_firm']['DD']
+zzz = dic_variables_monthly['ind_var_firm_trend']['DD_trend']
+www = df_issuer_rating_numeric_daily
+
+xxx = dic_variables_monthly['dep_var_firm']['next_12m_downgrade']
+'''
+
+
