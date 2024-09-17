@@ -431,4 +431,69 @@ www = df_issuer_rating_numeric_daily
 xxx = dic_variables_monthly['dep_var_firm']['next_12m_downgrade']
 '''
 
+'''
+# *** Downgrade ***
+
+df_data_downgrade = df_data.drop(['DATES', 'Issuer', 'next_12m_upgrade'], axis=1)
+df_data_downgrade_X = df_data_downgrade.loc[:, df_data_downgrade.columns != 'next_12m_downgrade']
+df_data_downgrade_y = df_data_downgrade['next_12m_downgrade']
+
+# Oversampling the data using SMOTE method
+sm = SMOTE(random_state=42)
+df_data_downgrade_X_res, df_data_downgrade_y_res = sm.fit_resample(df_data_downgrade_X, df_data_downgrade_y)
+
+# Check data after resampling
+print('Downgrade - Check data after resampling:')
+print('Number of observations after resampling: ',len(df_data_downgrade_X_res))
+print('Number of no downgrade after resampling:',len(df_data_downgrade_y_res[df_data_downgrade_y_res == 0]))
+print('Number of downgrade after resampling:',len(df_data_downgrade_y_res[df_data_downgrade_y_res == 1]))
+print('Proportion of no downgrade in oversampled data is ',len(df_data_downgrade_y_res[df_data_downgrade_y_res == 0])/len(df_data_downgrade_X_res))
+print('Proportion of downgrade in oversampled data is ',len(df_data_downgrade_y_res[df_data_downgrade_y_res == 1])/len(df_data_downgrade_X_res))
+
+df_data_downgrade_res = df_data_downgrade_X_res.join(df_data_downgrade_y_res)
+# Reorder the columns to put the y column first
+cols = [df_data_downgrade_y_res.name] + [col for col in df_data_downgrade_res.columns if col != df_data_downgrade_y_res.name]
+df_data_downgrade_res = df_data_downgrade_res[cols]
+
+# Scatter plot df_data_downgrade_res before and after resample
+sns.set(context='paper', style='ticks', palette='bright', font_scale=1.0)
+fig, ax = plt.subplots(figsize=(12, 8), dpi=300)
+#ax.set_title('', size=28)
+ax.scatter(x=df_data_downgrade[df_data_downgrade['next_12m_downgrade'] == 0]['EBIT/TA_trend'],
+           y=df_data_downgrade[df_data_downgrade['next_12m_downgrade'] == 0]['DD_trend'],
+           label = 'No Downgrade')
+ax.scatter(x=df_data_downgrade[df_data_downgrade['next_12m_downgrade'] == 1]['EBIT/TA_trend'],
+           y=df_data_downgrade[df_data_downgrade['next_12m_downgrade'] == 1]['DD_trend'],
+           label = 'Downgrade')
+ax.tick_params(axis='both', labelsize=18)
+ax.set_xlabel('EBIT/TA_trend', size=20)
+ax.set_ylabel('DD_trend', size=20)
+#ax.grid(axis='y', alpha=0.4)
+plt.legend()
+fig.tight_layout()
+plt.show()
+# fig.savefig(Path.joinpath(paths.get('output'), 'XXXXXXXXX'.png'))
+plt.close()
+
+sns.set(context='paper', style='ticks', palette='bright', font_scale=1.0)
+fig, ax = plt.subplots(figsize=(12, 8), dpi=300)
+#ax.set_title('', size=28)
+ax.scatter(x=df_data_downgrade_res[df_data_downgrade_res['next_12m_downgrade'] == 0]['EBIT/TA_trend'],
+           y=df_data_downgrade_res[df_data_downgrade_res['next_12m_downgrade'] == 0]['DD_trend'],
+           label = 'No Downgrade')
+ax.scatter(x=df_data_downgrade_res[df_data_downgrade_res['next_12m_downgrade'] == 1]['EBIT/TA_trend'],
+           y=df_data_downgrade_res[df_data_downgrade_res['next_12m_downgrade'] == 1]['DD_trend'],
+           label = 'Downgrade')
+ax.tick_params(axis='both', labelsize=18)
+ax.set_xlabel('EBIT/TA_trend', size=20)
+ax.set_ylabel('DD_trend', size=20)
+#ax.grid(axis='y', alpha=0.4)
+plt.legend()
+fig.tight_layout()
+plt.show()
+# fig.savefig(Path.joinpath(paths.get('output'), 'XXXXXXXXX'.png'))
+plt.close()
+'''
+
+
 

@@ -13,6 +13,9 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import pickle
 import time
+from imblearn.over_sampling import SMOTE
+import warnings
+import statsmodels.api as sm
 
 # Options
 pd.set_option('future.no_silent_downcasting', True)
@@ -23,6 +26,7 @@ paths.update({'data': Path.joinpath(paths.get('main'), 'data')})
 paths.update({'scripts': Path.joinpath(paths.get('main'), 'scripts')})
 
 # Warnings management
+#warnings.simplefilter("ignore", category=UserWarning)
 
 
 
@@ -535,7 +539,7 @@ df_DD_monthly = df_DD(df_V=df_ev_monthly,
 df_wc_to_ta_monthly = dic_issuer_fundamental_monthly['WORK_CAP'] / dic_issuer_fundamental_monthly['TOT_ASSET']
 df_re_to_ta_monthly = dic_issuer_fundamental_monthly['RET_EARN'] / dic_issuer_fundamental_monthly['TOT_ASSET']
 df_ebit_to_ta_monthly = dic_issuer_fundamental_monthly['EBIT'] / dic_issuer_fundamental_monthly['TOT_ASSET']
-df_me_to_be_monthly = df_mkt_cap_monthly / dic_issuer_fundamental_monthly['BOOK_EQUITY']
+df_me_to_td_monthly = df_mkt_cap_monthly / ((dic_issuer_fundamental_monthly['LT_DEBT'] + dic_issuer_fundamental_monthly['ST_DEBT']).replace(0, np.nan))
 df_sales_to_ta_monthly = dic_issuer_fundamental_monthly['SALES'] / dic_issuer_fundamental_monthly['TOT_ASSET']
 
 # Duan (2012)
@@ -570,14 +574,15 @@ dic_dep_variables_firm_monthly['next_12m_upgrade'] = df_issuer_rating_upgrade_mo
 # Independent variables - Firm specific variables
 dic_ind_variables_firm_monthly['DD'] = df_DD_monthly
 
-dic_ind_variables_firm_monthly['wc_to_ta'] = df_wc_to_ta_monthly
-dic_ind_variables_firm_monthly['re_to_ta'] = df_re_to_ta_monthly
-dic_ind_variables_firm_monthly['ebit_to_ta'] = df_ebit_to_ta_monthly
-dic_ind_variables_firm_monthly['ev_to_ta'] = df_ev_to_ta_monthly
-dic_ind_variables_firm_monthly['sales_to_ta'] = df_sales_to_ta_monthly
+dic_ind_variables_firm_monthly['WC/TA'] = df_wc_to_ta_monthly
+dic_ind_variables_firm_monthly['RE/TA'] = df_re_to_ta_monthly
+dic_ind_variables_firm_monthly['EBIT/TA'] = df_ebit_to_ta_monthly
+#dic_ind_variables_firm_monthly['ME/TD'] = df_me_to_td_monthly
+dic_ind_variables_firm_monthly['SALES/TA'] = df_sales_to_ta_monthly
 
-dic_ind_variables_firm_monthly['cash_to_ta'] = df_cash_to_ta_monthly
-dic_ind_variables_firm_monthly['size'] = df_size_monthly
+dic_ind_variables_firm_monthly['EV/TA'] = df_ev_to_ta_monthly
+dic_ind_variables_firm_monthly['CASH/TA'] = df_cash_to_ta_monthly
+dic_ind_variables_firm_monthly['SIZE'] = df_size_monthly
 
 #dic_ind_variables_firm_monthly['coverage'] = df_coverage_monthly
 #dic_ind_variables_firm_monthly['net_leverage'] = df_net_leverage_monthly
@@ -726,7 +731,24 @@ with open(Path.joinpath(paths.get('data'), 'df_data.pkl'), 'rb') as file:
 
 # *** Data visualisation ***
 
-# Plot the distribution of the different dependent variables
+# Check if the dependent variables are balanced
+print('Check if the dependent variables are balanced:')
+# Downgrade
+count_no_downgrade = len(df_data[df_data['next_12m_downgrade'] == 0])
+count_downgrade = len(df_data[df_data['next_12m_downgrade'] == 1])
+pct_of_no_downgrade = count_no_downgrade/(count_no_downgrade + count_downgrade)
+print('percentage of no downgrade:', pct_of_no_downgrade*100)
+pct_of_downgrade = count_downgrade/(count_no_downgrade + count_downgrade)
+print('percentage of downgrade:', pct_of_downgrade*100)
+# Upgrade
+count_no_upgrade = len(df_data[df_data['next_12m_upgrade'] == 0])
+count_upgrade = len(df_data[df_data['next_12m_upgrade'] == 1])
+pct_of_no_upgrade = count_no_upgrade/(count_no_upgrade + count_upgrade)
+print('percentage of no upgrade:', pct_of_no_upgrade*100)
+pct_of_upgrade = count_upgrade/(count_no_upgrade + count_upgrade)
+print('percentage of upgrade:', pct_of_upgrade*100)
+
+# Plot Downgrade distribution
 sns.set(context='paper', style='ticks', palette='bright', font_scale=1.0)
 fig, ax = plt.subplots(figsize=(12, 8), dpi=300)
 ax.set_title('Proportion of Downgrade', size=28)
@@ -740,6 +762,7 @@ plt.show()
 #fig.savefig(Path.joinpath(paths.get('output'), 'XXXXXXXXX'.png'))
 plt.close()
 
+# Plot Upgrade distribution
 sns.set(context='paper', style='ticks', palette='bright', font_scale=1.0)
 fig, ax = plt.subplots(figsize=(12, 8), dpi=300)
 ax.set_title('Proportion of Upgrade', size=28)
@@ -776,27 +799,96 @@ for i in df_data_ind_variables:
 df_data_variables = df_data.drop(['DATES', 'Issuer'], axis=1)
 df_data_describe = df_data_variables.describe()
 
-df_data_downgrade = df_data.drop(['DATES', 'Issuer', 'next_12m_upgrade'], axis=1)
+#df_data_downgrade = df_data.drop(['DATES', 'Issuer', 'next_12m_upgrade'], axis=1)
+#df_data_upgrade = df_data.drop(['DATES', 'Issuer', 'next_12m_downgrade'], axis=1)
 df_downgrade_mean = df_data_variables.groupby('next_12m_downgrade').mean()
-df_data_upgrade = df_data.drop(['DATES', 'Issuer', 'next_12m_downgrade'], axis=1)
 df_upgrade_mean = df_data_variables.groupby('next_12m_upgrade').mean()
 
 
 # %%
 # **********************************************************
-# *** Section: Preprocessing - Over-sampling             ***
+# *** Section: Preprocessing - Resampling: Over-sampling ***
 # **********************************************************
 
 
-from sklearn import preprocessing
-from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import train_test_split
+def resampling_data(dep_var, df_data, dep_var_to_remove):
+
+    df_data_dep_var = df_data.drop(['DATES', 'Issuer', dep_var_to_remove], axis=1)
+    df_data_dep_var_X = df_data_dep_var.loc[:, df_data_dep_var.columns != dep_var]
+    df_data_dep_var_y = df_data_dep_var[dep_var]
+
+    # Oversampling the data using SMOTE method
+    sm = SMOTE(random_state=42)
+    df_data_dep_var_X_res, df_data_dep_var_y_res = sm.fit_resample(df_data_dep_var_X, df_data_dep_var_y)
+
+    # Check data after resampling
+    print('{} - Check data after resampling:'.format(dep_var))
+    print('Number of observations after resampling: ', len(df_data_dep_var_X_res))
+    print('Number of no downgrade after resampling:', len(df_data_dep_var_y_res[df_data_dep_var_y_res == 0]))
+    print('Number of downgrade after resampling:', len(df_data_dep_var_y_res[df_data_dep_var_y_res == 1]))
+    print('Proportion of no downgrade in oversampled data is ', len(df_data_dep_var_y_res[df_data_dep_var_y_res == 0]) / len(df_data_dep_var_X_res))
+    print('Proportion of downgrade in oversampled data is ', len(df_data_dep_var_y_res[df_data_dep_var_y_res == 1]) / len(df_data_dep_var_X_res))
+
+    df_data_dep_var_res = df_data_dep_var_X_res.join(df_data_dep_var_y_res)
+    # Reorder the columns to put the y column first
+    cols = [df_data_dep_var_y_res.name] + [col for col in df_data_dep_var_res.columns if col != df_data_dep_var_y_res.name]
+    df_data_dep_var_res = df_data_dep_var_res[cols]
+
+    # Scatter plot df_data_dep_var_res before and after resampling
+    # Before resampling
+    sns.set(context='paper', style='ticks', palette='bright', font_scale=1.0)
+    fig, ax = plt.subplots(figsize=(12, 8), dpi=300)
+    # ax.set_title('', size=28)
+    ax.scatter(x=df_data_dep_var[df_data_dep_var[dep_var] == 0]['EBIT/TA_trend'],
+               y=df_data_dep_var[df_data_dep_var[dep_var] == 0]['DD_trend'],
+               label='No {}'.format(dep_var))
+    ax.scatter(x=df_data_dep_var[df_data_dep_var[dep_var] == 1]['EBIT/TA_trend'],
+               y=df_data_dep_var[df_data_dep_var[dep_var] == 1]['DD_trend'],
+               label='{}'.format(dep_var))
+    ax.tick_params(axis='both', labelsize=18)
+    ax.set_xlabel('EBIT/TA_trend', size=20)
+    ax.set_ylabel('DD_trend', size=20)
+    # ax.grid(axis='y', alpha=0.4)
+    plt.legend()
+    fig.tight_layout()
+    plt.show()
+    # fig.savefig(Path.joinpath(paths.get('output'), 'XXXXXXXXX'.png'))
+    plt.close()
+
+    # After resampling
+    sns.set(context='paper', style='ticks', palette='bright', font_scale=1.0)
+    fig, ax = plt.subplots(figsize=(12, 8), dpi=300)
+    # ax.set_title('', size=28)
+    ax.scatter(x=df_data_dep_var_res[df_data_dep_var_res[dep_var] == 0]['EBIT/TA_trend'],
+               y=df_data_dep_var_res[df_data_dep_var_res[dep_var] == 0]['DD_trend'],
+               label='No {}'.format(dep_var))
+    ax.scatter(x=df_data_dep_var_res[df_data_dep_var_res[dep_var] == 1]['EBIT/TA_trend'],
+               y=df_data_dep_var_res[df_data_dep_var_res[dep_var] == 1]['DD_trend'],
+               label='{}'.format(dep_var))
+    ax.tick_params(axis='both', labelsize=18)
+    ax.set_xlabel('EBIT/TA_trend', size=20)
+    ax.set_ylabel('DD_trend', size=20)
+    # ax.grid(axis='y', alpha=0.4)
+    plt.legend()
+    fig.tight_layout()
+    plt.show()
+    # fig.savefig(Path.joinpath(paths.get('output'), 'XXXXXXXXX'.png'))
+    plt.close()
+
+    return df_data_dep_var, df_data_dep_var_res
 
 
+# Downgrade
+df_data_downgrade, df_data_downgrade_res = resampling_data(dep_var='next_12m_downgrade', df_data=df_data, dep_var_to_remove='next_12m_upgrade')
 
+# Upgrade
+df_data_upgrade, df_data_upgrade_res = resampling_data(dep_var='next_12m_upgrade', df_data=df_data, dep_var_to_remove='next_12m_downgrade')
 
+# *** Recursive Feature Elimination ***
+# TODO: Recursive Feature Elimination
+# Downgrade
 
-
+# Upgrade
 
 
 # %%
@@ -805,5 +897,17 @@ from sklearn.model_selection import train_test_split
 # **********************************************************
 
 
+df_data_downgrade_res_X = df_data_downgrade_res.loc[:, df_data_downgrade_res.columns != 'next_12m_downgrade']
+df_data_downgrade_res_y = df_data_downgrade_res['next_12m_downgrade']
+
+logit_mod = sm.Logit(df_data_downgrade_res_y, df_data_downgrade_res_X)
+logit_res = logit_mod.fit()
+print(logit_res.summary2())
 
 
+df_data_upgrade_res_X = df_data_upgrade_res.loc[:, df_data_upgrade_res.columns != 'next_12m_upgrade']
+df_data_upgrade_res_y = df_data_upgrade_res['next_12m_upgrade']
+
+logit_mod = sm.Logit(df_data_upgrade_res_y, df_data_upgrade_res_X)
+logit_res = logit_mod.fit()
+print(logit_res.summary2())
