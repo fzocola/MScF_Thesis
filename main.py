@@ -16,6 +16,7 @@ import time
 from imblearn.over_sampling import SMOTE
 import warnings
 import statsmodels.api as sm
+from arch import arch_model
 
 # Options
 pd.set_option('future.no_silent_downcasting', True)
@@ -384,21 +385,73 @@ df_mkt_cap_daily = dic_issuer_market_daily['MKT_CAP']
 # Resample by month and take the last available value within the month
 df_mkt_cap_monthly = df_mkt_cap_daily.resample('ME').ffill()
 
-# Compute the volatility (annualised) of the equity total return using a rolling windows of one year,
-# nan if less than 100 values available
+# *** Volatility measurement ***
+
 # Get the company share price
 df_share_price_daily = dic_issuer_market_daily['SHARE_PRICE']
 # Get the equity simple total return (not log return)
 df_equity_tot_return_daily = dic_issuer_market_daily['TOT_RETURN']
-df_equity_return_vol_daily = df_equity_tot_return_daily.rolling(window=252, min_periods=100).std() * np.sqrt(252)
+
+# 1) Historical volatility
+
+# Compute the volatility (annualised) of the equity total return using a rolling windows of one year,
+# nan if less than 100 values available
+df_historical_volatility_daily = df_equity_tot_return_daily.rolling(window=252, min_periods=100).std() * np.sqrt(252)
 # Resample by month and take the last available value within the month
-df_equity_return_vol_monthly = df_equity_return_vol_daily.resample('ME').ffill()
+df_historical_volatility_daily_monthly = df_historical_volatility_daily.resample('ME').ffill()
+
+# 2) AR(1)-GARCH(1,1) (in sample)
 # TODO: Compute log return
-# TODO: Estimate GARCH ?
+
+def garch_volatility(df_returns):
+    # Create a new DataFrame with the same index and columns, filled with nan
+    df_conditional_volatility_t_1_daily = pd.DataFrame(np.nan, index=df_returns.index, columns=df_returns.columns)
+
+    for issuer in df_returns:
+        print(issuer)
+
+        returns = df_returns[issuer]
+
+        if returns.count() > 750:
+
+            returns = returns.dropna()
+            # Rescaling the returns to fit the GARCH
+            returns = 100 * returns
+
+            # Fit the AR(1)-GARCH(1,1) model
+            am = arch_model(y=returns, mean='AR', lags=1, vol='GARCH', p=1, o=0, q=1, dist='normal')
+            res = am.fit()
+            # res.summary()
+            if res.convergence_flag == 0:
+                # Get the 1 period ahead conditional volatility (annualised)
+                conditional_volatility_t_1_daily = res.conditional_volatility.shift(-1) / 100 * np.sqrt(252)
+
+                df_conditional_volatility_t_1_daily[issuer] = conditional_volatility_t_1_daily
+
+    # Take a rolling average of the conditional volatility to remove the noise
+    df_conditional_volatility_t_1_daily = df_conditional_volatility_t_1_daily.rolling(window=90).mean()
+    # Resample by month and take the last available value within the month
+    df_conditional_volatility_t_1_monthly = df_conditional_volatility_t_1_daily.resample('ME').ffill()
+
+    return df_conditional_volatility_t_1_daily, df_conditional_volatility_t_1_monthly
+
+df_garch_conditional_volatility_t_1_daily, df_garch_conditional_volatility_t_1_monthly = garch_volatility(df_equity_tot_return_daily)
+
+'''
+plt.plot(df_garch_conditional_volatility_t_1_daily['AAL US Equity'])
+plt.plot(df_historical_volatility_daily['AAL US Equity'])
+plt.show()
+'''
+
+# Volatility measurement method choice
+df_equity_return_vol_monthly = df_garch_conditional_volatility_t_1_monthly
+
+
+# *** Risk free rate ***
 
 # 3m US treasury bill rate (annualised)
 s_3m_us_treasury_bill_rate_daily = dic_market_data_daily['RATES']['GB3 Govt'] / 100
-# TODO: change 3m rate with long term average ?
+# TODO: change 3m rate with long term average ? No
 '''
 # Calculate the average of the 3m US treasury bill rate series
 treasury_bill_rate_daily_average = s_3m_us_treasury_bill_rate_daily.mean()
@@ -884,30 +937,79 @@ df_data_downgrade, df_data_downgrade_res = resampling_data(dep_var='next_12m_dow
 # Upgrade
 df_data_upgrade, df_data_upgrade_res = resampling_data(dep_var='next_12m_upgrade', df_data=df_data, dep_var_to_remove='next_12m_downgrade')
 
-# *** Recursive Feature Elimination ***
-# TODO: Recursive Feature Elimination
-# Downgrade
-
-# Upgrade
-
 
 # %%
 # **********************************************************
 # *** Section:  Logit regression                         ***
 # **********************************************************
 
+# TODO: Cluster Robust std ? (I technically don't care?, I want to measure to quality of predictions)
+# TODO: Constant
+# TODO: winzorization
+# TODO: marginal effect
+# TODO: matrice de confusion
 
+# *** Downgrade ***
+
+# Fitting the logit regression (resample data)
 df_data_downgrade_res_X = df_data_downgrade_res.loc[:, df_data_downgrade_res.columns != 'next_12m_downgrade']
+df_data_downgrade_res_X = sm.add_constant(df_data_downgrade_res_X)
 df_data_downgrade_res_y = df_data_downgrade_res['next_12m_downgrade']
 
 logit_mod = sm.Logit(df_data_downgrade_res_y, df_data_downgrade_res_X)
 logit_res = logit_mod.fit()
 print(logit_res.summary2())
+print(logit_res.summary())
+
+df_downgrade_params = pd.Series(logit_res.params)
+
+# Model estimated rating downgrade probability within next 12m (real data)
+df_data_test = copy.deepcopy(df_data)
+df_data_test_y = df_data_test['next_12m_downgrade']
+
+df_data_test['y_index_downgrade_predict'] = (sm.add_constant(df_data_downgrade.loc[:, df_data_downgrade.columns != 'next_12m_downgrade']) * df_downgrade_params).sum(axis=1)
+df_data_test['estimated_proba_downgrade_next_12m'] = 1 / (1 + np.exp(-df_data_test['y_index_downgrade_predict']))
+
+# *** Evaluation of the model (real data) ***
+df_data_downgrade_result_mean = df_data_test.drop(['DATES', 'Issuer'], axis=1).groupby('next_12m_downgrade').mean()
+
+# Confusion Matrix
+
+'''
+xxx = df_data_test['estimated_proba_downgrade_next_12m']
+'''
+
+threshold = 0.75
+df_data_test['estimated_proba_downgrade_next_12m_round'] = [1 if p > threshold else 0 for p in df_data_test['estimated_proba_downgrade_next_12m']]
+df_data_test_y_pred_round = df_data_test['estimated_proba_downgrade_next_12m_round']
+
+from sklearn.metrics import accuracy_score
+print(accuracy_score(df_data_test_y, df_data_test_y_pred_round))
 
 
+from sklearn.metrics import confusion_matrix
+confusion_matrix = confusion_matrix(df_data_test_y, df_data_test_y_pred_round)
+print(confusion_matrix)
+
+
+
+
+# ROC
+
+
+
+
+
+'''
+xx = sm.add_constant(df_data_downgrade_result.loc[:, df_data_downgrade_result.columns != 'next_12m_downgrade']) * df_downgrade_params
+'''
+
+
+# Upgrade
 df_data_upgrade_res_X = df_data_upgrade_res.loc[:, df_data_upgrade_res.columns != 'next_12m_upgrade']
 df_data_upgrade_res_y = df_data_upgrade_res['next_12m_upgrade']
 
 logit_mod = sm.Logit(df_data_upgrade_res_y, df_data_upgrade_res_X)
 logit_res = logit_mod.fit()
 print(logit_res.summary2())
+print(logit_res.summary())

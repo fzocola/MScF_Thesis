@@ -495,5 +495,81 @@ plt.show()
 plt.close()
 '''
 
+'''
+# *** Recursive Feature Elimination ***
+from sklearn.feature_selection import RFE
+from sklearn.linear_model import LogisticRegression
+
+# Downgrade
+df_data_downgrade_res_X = df_data_downgrade_res.loc[:, df_data_downgrade_res.columns != 'next_12m_downgrade']
+df_data_downgrade_res_y = df_data_downgrade_res['next_12m_downgrade']
+
+
+estimator = LogisticRegression()
+selector = RFE(estimator, n_features_to_select=10)
+selector = selector.fit(df_data_downgrade_res_X, df_data_downgrade_res_y)
+print(selector.support_)
+print(selector.ranking_)
+
+# Upgrade
+'''
+
+'''
+df_returns = df_equity_tot_return_daily
+
+# Create a new DataFrame with the same index and columns, filled with nan
+df_garch_conditional_volatility_t_1_daily = pd.DataFrame(np.nan, index=df_returns.index, columns=df_returns.columns)
+
+for issuer in df_returns:
+
+    returns = df_returns[issuer]
+
+    if returns.count 
+
+    # Rescaling the returns
+    returns = 100 * returns
+
+    # Fit the AR(1)-GARCH(1,1) model
+    am = arch_model(y=returns, mean='AR', lags=1, vol='GARCH', p=1, o=0, q=1, dist='normal')
+    res = am.fit()
+    # res.summary()
+
+    # Get the 1 period ahead conditional volatility (annualised)
+    conditional_volatility_t_1_daily = res.conditional_volatility.shift(-1) / 100 * np.sqrt(252)
+
+    df_garch_conditional_volatility_t_1_daily[issuer] = conditional_volatility_t_1_daily
+
+# Resample by month and take the last available value within the month
+df_garch_conditional_volatility_t_1_monthly = df_garch_conditional_volatility_t_1_daily.resample('ME').ffill()
+'''
+
+'''
+returns = df_equity_tot_return_daily['AMGN US Equity']
+
+# Rescaling the returns
+returns = 100 * returns
+
+# Fit the AR(1)-GARCH(1,1) model
+am = arch_model(y=returns, mean='Constant', vol='GARCH', p=1, o=0, q=1, dist='normal')
+res = am.fit()
+res.summary()
+
+# Get the 1 period ahead conditional volatility (annualised)
+conditional_volatility_t_1_daily = res.conditional_volatility.shift(-1) / 100 * np.sqrt(252)
+'''
+
+'''
+plt.plot(conditional_volatility_t_1_daily)
+plt.plot(df_equity_return_vol_daily['AMGN US Equity'])
+plt.show()
+'''
+
+'''
+# Get the 1 period ahead forcast of the volatility
+forecast_volatility = np.sqrt(res.forecast(horizon=1).variance) / 100
+print(forecast_volatility)
+'''
+
+
 
 
