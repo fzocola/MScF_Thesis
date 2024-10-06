@@ -570,6 +570,30 @@ forecast_volatility = np.sqrt(res.forecast(horizon=1).variance) / 100
 print(forecast_volatility)
 '''
 
+'''
+df_test_2 = dic_issuer_fundamental_quarterly['LT_DEBT']
+df_test_3 = dic_issuer_fundamental_quarterly['LT_DEBT'].copy()
+df_test_3.index = df_test_3.index + pd.offsets.MonthEnd(0)
+'''
+
+'''
+df_test_q = dic_issuer_fundamental_quarterly['LT_DEBT']
+df_test_d = dic_issuer_fundamental_daily['LT_DEBT']
+df_test_m = dic_issuer_fundamental_monthly['LT_DEBT']
+'''
+
+'''
+# Check the values in the rating dataframe
+s_issuer_rating_daily_unique = pd.unique(df_issuer_rating_daily.values.ravel())
+'''
+
+'''
+def dic_conv_daily_to_monthly(dic):
+    dic_copy = copy.deepcopy(dic)
+    for i in dic_copy:
+        dic_copy[i] = dic_copy[i].resample('ME').ffill()
+    return dic_copy
+'''''
 
 
 

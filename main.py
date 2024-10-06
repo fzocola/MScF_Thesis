@@ -63,7 +63,7 @@ dic_issuer_description = {i: dic_fm_data[i] for i in ls_issuer_description_sheet
 
 # Get market open days
 def get_market_open_date(s_ref_data):
-    s_ref_data_copy = s_ref_data
+    s_ref_data_copy = copy.deepcopy(s_ref_data)
     s_ref_data_copy = s_ref_data_copy.dropna()
     s_date = pd.Series(s_ref_data_copy.index)
     return s_date
@@ -88,7 +88,7 @@ dic_market_data_daily = set_index_df_in_dic(dic_market_data_daily, 'DATES')
 
 # Convert quarterly data to daily data
 def df_conv_quarterly_to_daily(df):
-    df_copy = df
+    df_copy = copy.deepcopy(df)
     # Fill all the nan with na_to_nb_value, we don't want to replace nan with last value
     na_to_nb_value = -9999999999999
     df_copy = df_copy.fillna(na_to_nb_value)
@@ -112,15 +112,9 @@ def dic_conv_quarterly_to_daily(dic):
 
 dic_issuer_fundamental_daily = dic_conv_quarterly_to_daily(dic_issuer_fundamental_quarterly)
 
-'''
-df_test_2 = dic_issuer_fundamental_quarterly['LT_DEBT']
-df_test_3 = dic_issuer_fundamental_quarterly['LT_DEBT'].copy()
-df_test_3.index = df_test_3.index + pd.offsets.MonthEnd(0)
-'''
-
 # Convert quarterly data to monthly data
 def df_conv_quarterly_to_monthly(df):
-    df_copy = df
+    df_copy = copy.deepcopy(df)
 
     # Align dates to the end of the month - Make sure that the date of the quarterly data is month end
     df_copy.index = df_copy.index + pd.offsets.MonthEnd(0)
@@ -147,12 +141,6 @@ def dic_conv_quarterly_to_monthly(dic):
 
 dic_issuer_fundamental_monthly = dic_conv_quarterly_to_monthly(dic_issuer_fundamental_quarterly)
 
-'''
-df_test_q = dic_issuer_fundamental_quarterly['LT_DEBT']
-df_test_d = dic_issuer_fundamental_daily['LT_DEBT']
-df_test_m = dic_issuer_fundamental_monthly['LT_DEBT']
-'''
-
 # Lag the fundamental data by 90 days
 def dic_lag_data(dic,lag):
     dic_copy = copy.deepcopy(dic)
@@ -167,7 +155,6 @@ dic_issuer_fundamental_monthly = dic_lag_data(dic_issuer_fundamental_monthly, la
 
 
 # *** Issuer rating preprocessing 1 - before date filtering **
-# TODO: check functions output - add dic copy
 
 def dic_rating_preprocessing_1(dic):
     dic_copy = copy.deepcopy(dic)
@@ -183,7 +170,7 @@ dic_issuer_rating_daily = dic_rating_preprocessing_1(dic_issuer_rating_daily)
 # *** Date filtering ***
 
 def df_filtered_date(df, s_date):
-    df_copy = df
+    df_copy = copy.deepcopy(df)
     df_copy = df_copy[df_copy.index.isin(s_date)]
     return df_copy
 
@@ -204,14 +191,9 @@ dic_market_data_daily = dic_filtered_date(dic_market_data_daily, s_market_open_d
 # *** Issuer rating preprocessing_2 ***
 df_issuer_rating_daily = dic_issuer_rating_daily['RATING']
 
-'''
-# Check the values in the rating dataframe
-s_issuer_rating_daily_unique = pd.unique(df_issuer_rating_daily.values.ravel())
-'''
-
 # Define a mapping from BBG ratings to numeric values
 def rating_to_numeric(df):
-    df_copy = df
+    df_copy = copy.deepcopy(df)
     # Define a mapping from BBG ratings to S&P rating
     bbg_rating_to_sp_rating = {
         'AAA': 'AAA',
@@ -232,6 +214,7 @@ def rating_to_numeric(df):
     df_copy = df_copy.apply(lambda col: col.map(bbg_rating_to_sp_rating))
 
     # Define a mapping from S&P rating to numeric values
+    '''
     sp_rating_to_numeric = {
         'AAA': 1,
         'AA+': 2, 'AA': 3, 'AA-': 4,
@@ -244,6 +227,50 @@ def rating_to_numeric(df):
         'C': 21,
         'D': 22,
     }
+    '''
+    '''
+    sp_rating_to_numeric = {
+        'AAA': 1,
+        'AA+': 1, 'AA': 1, 'AA-': 1,
+        'A+': 1, 'A': 1, 'A-': 1,
+        'BBB+': 2, 'BBB': 2, 'BBB-': 2,
+        'BB+': 3, 'BB': 3, 'BB-': 3,
+        'B+': 4, 'B': 4, 'B-': 4,
+        'CCC+': 4, 'CCC': 4, 'CCC-': 4,
+        'CC': 5,
+        'C': 5,
+        'D': 5,
+    }
+    '''
+
+    # 3 categories: IG, HY, Distress
+    sp_rating_to_numeric = {
+        'AAA': 1,
+        'AA+': 1, 'AA': 1, 'AA-': 1,
+        'A+': 1, 'A': 1, 'A-': 1,
+        'BBB+': 1, 'BBB': 1, 'BBB-': 1,
+        'BB+': 2, 'BB': 2, 'BB-': 2,
+        'B+': 2, 'B': 2, 'B-': 2,
+        'CCC+': 3, 'CCC': 3, 'CCC-': 3,
+        'CC': 3,
+        'C': 3,
+        'D': 3,
+    }
+    '''
+    # 2 categories: IG, HY
+    sp_rating_to_numeric = {
+        'AAA': 1,
+        'AA+': 1, 'AA': 1, 'AA-': 1,
+        'A+': 1, 'A': 1, 'A-': 1,
+        'BBB+': 1, 'BBB': 1, 'BBB-': 1,
+        'BB+': 2, 'BB': 2, 'BB-': 2,
+        'B+': 2, 'B': 2, 'B-': 2,
+        'CCC+': 2, 'CCC': 2, 'CCC-': 2,
+        'CC': 2,
+        'C': 2,
+        'D': 2,
+    }
+    '''
 
     # Apply the mapping to each column of the dataframe
     df_numeric = df_copy.apply(lambda col: col.map(sp_rating_to_numeric))
@@ -255,7 +282,7 @@ df_issuer_rating_numeric_daily = rating_to_numeric(df_issuer_rating_daily)
 
 # Creation of the downgrade, upgrade dataframe
 def create_rating_change_df(df, credit_event_type):
-    df_copy = df
+    df_copy = copy.deepcopy(df)
     # Create a new DataFrame with the same index and columns, filled with nan
     df_credit_change = pd.DataFrame(np.nan, index=df_copy.index, columns=df_copy.columns)
 
@@ -300,7 +327,6 @@ def create_rating_change_df(df, credit_event_type):
 df_issuer_rating_downgrade_daily = create_rating_change_df(df_issuer_rating_numeric_daily, credit_event_type='downgrade')
 df_issuer_rating_upgrade_daily = create_rating_change_df(df_issuer_rating_numeric_daily, credit_event_type='upgrade')
 
-# TODO: Check function that create a new dataframe, df_copy = df (is not creating a copy of the dataframe)
 # Creation number of days since last change dataframe
 def df_nd_days_since_last_change(df):
     df_copy = copy.deepcopy(df)
@@ -327,14 +353,6 @@ df_issuer_rating_nb_days_last_change_daily = df_nd_days_since_last_change(df_iss
 
 
 # *** Convert daily data to monthly data ***
-
-'''
-def dic_conv_daily_to_monthly(dic):
-    dic_copy = copy.deepcopy(dic)
-    for i in dic_copy:
-        dic_copy[i] = dic_copy[i].resample('ME').ffill()
-    return dic_copy
-'''''
 
 df_issuer_rating_downgrade_monthly = df_issuer_rating_downgrade_daily.resample('ME').ffill()
 df_issuer_rating_upgrade_monthly = df_issuer_rating_upgrade_daily.resample('ME').ffill()
@@ -365,7 +383,7 @@ def df_nb_months_since_last_rating_change(df):
 
 df_issuer_rating_nb_months_last_change_monthly = df_nb_months_since_last_rating_change(df_issuer_rating_nb_days_last_change_daily)
 
-
+# TODO: Clean after
 
 # %%
 # **********************************************************
@@ -451,15 +469,14 @@ df_equity_return_vol_monthly = df_garch_conditional_volatility_t_1_monthly
 
 # 3m US treasury bill rate (annualised)
 s_3m_us_treasury_bill_rate_daily = dic_market_data_daily['RATES']['GB3 Govt'] / 100
-# TODO: change 3m rate with long term average ? No
-'''
-# Calculate the average of the 3m US treasury bill rate series
-treasury_bill_rate_daily_average = s_3m_us_treasury_bill_rate_daily.mean()
-# Replace all the values in the series with the series average
-s_3m_us_treasury_bill_rate_daily = s_3m_us_treasury_bill_rate_daily.apply(lambda x: treasury_bill_rate_daily_average)
-'''
 # Resample by month and take the last available value within the month
 s_3m_us_treasury_bill_rate_monthly = s_3m_us_treasury_bill_rate_daily.resample('ME').ffill()
+
+# Get a constant risk-free rate
+treasury_bill_rate_daily_constant = 0.02
+# Replace all the values in the series with the constant
+s_3m_us_treasury_bill_rate_const_daily = s_3m_us_treasury_bill_rate_daily.apply(lambda x: treasury_bill_rate_daily_constant)
+s_3m_us_treasury_bill_rate_const_monthly = s_3m_us_treasury_bill_rate_const_daily.resample('ME').ffill()
 
 
 # *** Select data between a date range ***
@@ -472,7 +489,7 @@ df_kmv_debt_monthly = df_kmv_debt_monthly.loc[start_date:end_date]
 df_mkt_cap_monthly = df_mkt_cap_monthly.loc[start_date:end_date]
 df_equity_return_vol_monthly = df_equity_return_vol_monthly.loc[start_date:end_date]
 s_3m_us_treasury_bill_rate_monthly = s_3m_us_treasury_bill_rate_monthly.loc[start_date:end_date]
-
+s_3m_us_treasury_bill_rate_const_monthly = s_3m_us_treasury_bill_rate_const_monthly.loc[start_date:end_date]
 
 # *** DD computation ***
 
@@ -557,7 +574,7 @@ def get_df_V_sV(df_E, df_K, df_sE, s_r, g, T, t):
 df_ev_monthly, df_ev_vol_monthly = get_df_V_sV(df_E=df_mkt_cap_monthly,
                                                df_K=df_kmv_debt_monthly,
                                                df_sE=df_equity_return_vol_monthly,
-                                               s_r=s_3m_us_treasury_bill_rate_monthly, g=0, T=1, t=0)
+                                               s_r=s_3m_us_treasury_bill_rate_const_monthly, g=0, T=1, t=0)
 
 def df_DD(df_V, df_K, df_sV, s_r, g, T, t):
     df_DD_output = pd.DataFrame(np.nan, index=df_V.index, columns=df_V.columns)
@@ -577,7 +594,7 @@ def df_DD(df_V, df_K, df_sV, s_r, g, T, t):
 df_DD_monthly = df_DD(df_V=df_ev_monthly,
                       df_K=df_kmv_debt_monthly,
                       df_sV=df_ev_vol_monthly,
-                      s_r=s_3m_us_treasury_bill_rate_monthly, g=0, T=1, t=0)
+                      s_r=s_3m_us_treasury_bill_rate_const_monthly, g=0, T=1, t=0)
 
 
 # %%
@@ -702,6 +719,25 @@ def dic_ind_var_firm_trend(dic_variables, df_lag):
 
 dic_variables_monthly = dic_ind_var_firm_trend(dic_variables_monthly, df_issuer_rating_nb_months_last_change_monthly)
 
+# *** Compute level for firm specific variables: take the 12 months ago level of the variable ***
+
+def dic_ind_var_firm_level(dic_variables, lag):
+
+    dic = dic_variables['ind_var_firm']
+
+    for var in dic:
+        dic[var] = dic[var].shift(lag)
+
+    return dic_variables
+
+dic_variables_monthly = dic_ind_var_firm_level(dic_variables_monthly, lag=-12)
+
+'''
+zzz = dic_variables_monthly['ind_var_firm']['DD']
+yyy = dic_variables_monthly['ind_var_firm']['DD'].shift(-12)
+'''
+
+# Date filtering
 start_date = '2011-12-31'
 end_date = '2022-12-31'
 
@@ -943,6 +979,8 @@ df_data_upgrade, df_data_upgrade_res = resampling_data(dep_var='next_12m_upgrade
 # *** Section:  Logit regression                         ***
 # **********************************************************
 
+# TODO: Run ok until here
+
 # TODO: Cluster Robust std ? (I technically don't care?, I want to measure to quality of predictions)
 # TODO: Constant
 # TODO: winzorization
@@ -992,17 +1030,17 @@ confusion_matrix = confusion_matrix(df_data_test_y, df_data_test_y_pred_round)
 print(confusion_matrix)
 
 
-
-
 # ROC
-
-
-
-
 
 '''
 xx = sm.add_constant(df_data_downgrade_result.loc[:, df_data_downgrade_result.columns != 'next_12m_downgrade']) * df_downgrade_params
 '''
+
+
+
+
+
+
 
 
 # Upgrade
