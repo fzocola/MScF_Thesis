@@ -595,5 +595,167 @@ def dic_conv_daily_to_monthly(dic):
     return dic_copy
 '''''
 
+'''
+# Replace all values with NaN except where values are 0
+df_issuer_rating_nb_months_next_change_monthly = df_issuer_rating_nb_months_last_change_monthly.where(df_issuer_rating_nb_months_last_change_monthly == 0, np.nan)
 
+for issuer in tqdm(df_issuer_rating_nb_months_next_change_monthly.iloc[:, :].columns, desc='Creation nb of months until next change df'):
+
+    count = 0
+    start_counting = False
+    col = df_issuer_rating_nb_months_next_change_monthly[issuer]
+    # Work backwards through the column
+    for i in reversed(range(len(col))):
+        if col.iloc[i] == 0:
+            start_counting = True
+
+        if start_counting == True:
+            if col.iloc[i] == 0:
+                count = 0
+            elif pd.isna(col.iloc[i]):
+                count += 1
+                col.iloc[i] = count
+'''
+
+'''
+def df_nb_months_until_next_rating_change(df):
+    # Replace all values with -9999999 except where values are 0
+    df_issuer_rating_nb_months_next_change = df.where(df == 0, -999999)
+
+    for issuer in tqdm(df_issuer_rating_nb_months_next_change.iloc[:, :].columns, desc='Creation nb of months until next change df'):
+
+        count = 0
+        start_counting = False
+        col = df_issuer_rating_nb_months_next_change[issuer]
+        # Work backwards through the column
+        for i in reversed(range(len(col))):
+            if col.iloc[i] == 0:
+                start_counting = True
+
+            if start_counting == True:
+                if col.iloc[i] == 0:
+                    count = 0
+                else:
+                    count += 1
+                    col.iloc[i] = count
+
+    return df_issuer_rating_nb_months_next_change
+
+df_issuer_rating_nb_months_next_change_monthly = df_nb_months_until_next_rating_change(df_issuer_rating_nb_months_last_change_monthly)
+'''
+
+
+'''
+##########################
+# Test
+from sklearn.linear_model import LogisticRegression
+clf = LogisticRegression().fit(df_data_downgrade_res_X, df_data_downgrade_res_y)
+y_predict = clf.predict(sm.add_constant(df_data_downgrade.loc[:, df_data_downgrade.columns != 'next_12m_downgrade']))
+##########################
+'''
+
+
+'''
+df=df_data_downgrade_res
+y=df_data_downgrade_res.columns[0]
+variables_for_interaction=df_data_downgrade_res.columns[1:9].tolist()
+binary_var=df_data_downgrade_res.columns[-1]
+
+# Create interaction terms between each variable and the binary variable
+interactions = [f'{var}:{binary_var}' for var in variables_for_interaction]
+
+# Construct the formula dynamically
+independent_vars = list(df.columns.drop([y]))  # Include all variables except y and binary_var
+
+formula = y + ' ~ ' + ' + '.join(independent_vars + interactions)
+'''
+
+'''
+for i in df_data_downgrade_res.columns[1:9].tolist():
+    print(i)
+'''
+
+'''
+import statsmodels.formula.api as smf
+# Fit the logistic regression model with interaction terms
+model = smf.logit(formula=formula_downgrade, data=df_data_downgrade_res).fit()
+# Print the summary of the model
+print(model.summary())
+
+df_data_downgrade_res.drop(columns=['rating_cat_1.0'], inplace=True)
+'''
+
+'''
+def specification_construction(df, y, variables_for_interaction, binary_var):
+    # Create interaction terms between each variable and the binary variable
+    interactions = [f'Q("{var}"):Q("{binary_var}")' for var in variables_for_interaction]
+
+    # Construct the formula dynamically
+    independent_vars = list(df.columns.drop([y]))
+    independent_vars = [f'Q("{var}")' for var in independent_vars]
+
+    formula = y + ' ~ ' + ' + '.join(independent_vars + interactions)
+
+    return formula
+    
+formula_downgrade = specification_construction(df=df_data_downgrade_res,
+                                               y=df_data_downgrade_res.columns[1],
+                                               variables_for_interaction=df_data_downgrade_res.columns[1:9].tolist(),
+                                               binary_var=df_data_downgrade_res.columns[-1])     
+
+formula_upgrade = specification_construction(df=df_data_upgrade_res,
+                                               y=df_data_upgrade_res.columns[1],
+                                               variables_for_interaction=df_data_upgrade_res.columns[1:9].tolist(),
+                                               binary_var=df_data_upgrade_res.columns[-1])
+
+'''
+
+
+'''
+# Insert a constant
+df_data_downgrade_res = sm.add_constant(df_data_downgrade_res)
+df_data_upgrade_res = sm.add_constant(df_data_upgrade_res)
+'''
+
+'''
+df_data_downgrade_res['rating_1.0']
+df_dummies = pd.get_dummies(df_data_downgrade_res['rating_cat_id'], prefix='rating').drop(columns=['rating_2.0']).astype(int)
+'''
+
+'''
+# Creation of dummy variables, with rating == 2 as the reference
+df_data_downgrade_res = pd.get_dummies(df_data_downgrade_res, columns=['rating_cat_id'], prefix='rating', dtype=int).drop(columns=['rating_2.0'])
+df_data_upgrade_res = pd.get_dummies(df_data_upgrade_res, columns=['rating_cat_id'], prefix='rating', dtype=int).drop(columns=['rating_2.0'])
+'''
+
+# TODO: Run ok until here
+
+# TODO: Cluster Robust std ? (I technically don't care?, I want to measure to quality of predictions)
+# TODO: Constant
+# TODO: winzorization
+# TODO: marginal effect
+# TODO: matrice de confusion
+
+'''
+www = pd.Series(logit_res.params)
+yyy = sm.add_constant(df_data_downgrade.loc[:, df_data_downgrade.columns != 'next_12m_downgrade'])
+zzz = (sm.add_constant(df_data_downgrade.loc[:, df_data_downgrade.columns != 'next_12m_downgrade']) * df_downgrade_params)
+'''
+
+'''
+# *** Take the max proba over the last 12m before a credit event ***
+'''
+'''
+We evaluate the performance of the model based max estimated proba reach within the 12m before the credit 
+event
+'''
+'''
+def find_max_default_proba():
+    return
+
+# Find the maximum probability of default for each credit event
+max_prob_df = df_data_test.groupby('downgrade_id')['estimated_proba_downgrade_next_12m'].transform('max')
+# Assign this max probability value to all rows for the respective credit_event_id
+df_data_test['max_estimated_proba_downgrade_12m_before_default'] = max_prob_df
+'''
 

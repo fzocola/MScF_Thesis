@@ -242,7 +242,7 @@ def rating_to_numeric(df):
         'D': 5,
     }
     '''
-
+    '''
     # 3 categories: IG, HY, Distress
     sp_rating_to_numeric = {
         'AAA': 1,
@@ -256,6 +256,22 @@ def rating_to_numeric(df):
         'C': 3,
         'D': 3,
     }
+    '''
+
+    # 3 categories: IG_High Grade, IG_Low Grade, HY
+    sp_rating_to_numeric = {
+        'AAA': 1,
+        'AA+': 1, 'AA': 1, 'AA-': 1,
+        'A+': 1, 'A': 1, 'A-': 1,
+        'BBB+': 2, 'BBB': 2, 'BBB-': 2,
+        'BB+': 3, 'BB': 3, 'BB-': 3,
+        'B+': 3, 'B': 3, 'B-': 3,
+        'CCC+': 3, 'CCC': 3, 'CCC-': 3,
+        'CC': 3,
+        'C': 3,
+        'D': 3,
+    }
+
     '''
     # 2 categories: IG, HY
     sp_rating_to_numeric = {
@@ -271,7 +287,6 @@ def rating_to_numeric(df):
         'D': 2,
     }
     '''
-
     # Apply the mapping to each column of the dataframe
     df_numeric = df_copy.apply(lambda col: col.map(sp_rating_to_numeric))
 
@@ -351,8 +366,38 @@ def df_nd_days_since_last_change(df):
 
 df_issuer_rating_nb_days_last_change_daily = df_nd_days_since_last_change(df_issuer_rating_numeric_daily)
 
+# Creation number of days since last credit event dataframe
+def df_nd_days_since_last_credit_event(df, credit_event_type):
+    df_copy = copy.deepcopy(df)
+
+    for issuer in tqdm(df_copy.iloc[:, :].columns, desc='Creation nb days since last {} df'.format(credit_event_type)):
+        # Identify rating changes (True where the rating has changed)
+        if credit_event_type == 'Downgrade':
+            rating_change = (df_copy[issuer] > df_copy[issuer].shift(1))
+        if credit_event_type == 'Upgrade':
+            rating_change = (df_copy[issuer] < df_copy[issuer].shift(1))
+
+        # Count number of rating change
+        count_rating_change = rating_change.cumsum()
+
+        # For each group, subtract the first date of the group from all dates in that group
+        time_since_last_change = df_copy[issuer].index.to_series().groupby(count_rating_change).transform(
+            lambda x: x - x.iloc[0])
+
+        # Convert to days
+        time_since_last_change_in_days = time_since_last_change.dt.days
+
+        df_copy[issuer] = time_since_last_change_in_days
+
+    return df_copy
+
+df_issuer_rating_nb_days_last_downgrade_daily = df_nd_days_since_last_credit_event(df_issuer_rating_numeric_daily, credit_event_type= 'Downgrade')
+df_issuer_rating_nb_days_last_upgrade_daily = df_nd_days_since_last_credit_event(df_issuer_rating_numeric_daily, credit_event_type= 'Upgrade')
+
 
 # *** Convert daily data to monthly data ***
+
+df_issuer_rating_numeric_monthly = df_issuer_rating_numeric_daily.resample('ME').ffill()
 
 df_issuer_rating_downgrade_monthly = df_issuer_rating_downgrade_daily.resample('ME').ffill()
 df_issuer_rating_upgrade_monthly = df_issuer_rating_upgrade_daily.resample('ME').ffill()
@@ -383,7 +428,64 @@ def df_nb_months_since_last_rating_change(df):
 
 df_issuer_rating_nb_months_last_change_monthly = df_nb_months_since_last_rating_change(df_issuer_rating_nb_days_last_change_daily)
 
+df_issuer_rating_nb_months_last_downgrade_monthly = df_nb_months_since_last_rating_change(df_issuer_rating_nb_days_last_downgrade_daily)
+df_issuer_rating_nb_months_last_upgrade_monthly = df_nb_months_since_last_rating_change(df_issuer_rating_nb_days_last_upgrade_daily)
+
 # TODO: Clean after
+# Create a df with the nb of months until next rating change
+def df_nb_months_until_next_rating_change(df):
+    # Replace all values with -9999999 except where values are 0
+    df_issuer_rating_nb_months_next_change = df.where(df == 0, -999999)
+
+    for issuer in tqdm(df_issuer_rating_nb_months_next_change.iloc[:, :].columns, desc='Creation nb of months until next change df'):
+
+        count = 0
+        start_counting = False
+        col = df_issuer_rating_nb_months_next_change[issuer]
+        # Work backwards through the column
+        for i in reversed(range(len(col))):
+            if col.iloc[i] == 0:
+                start_counting = True
+
+            if start_counting == True:
+                if col.iloc[i] == 0:
+                    count = 0
+                else:
+                    count += 1
+                    col.iloc[i] = count
+
+    return df_issuer_rating_nb_months_next_change
+
+df_issuer_rating_nb_months_next_downgrade_monthly = df_nb_months_until_next_rating_change(df_issuer_rating_nb_months_last_downgrade_monthly)
+df_issuer_rating_nb_months_next_upgrade_monthly = df_nb_months_until_next_rating_change(df_issuer_rating_nb_months_last_upgrade_monthly)
+
+# Create a df to identify the different credit events (create an id for each credit event)
+
+def df_credit_event_id(df):
+    # Replace all values with -999999 except where values are between 1 and 12
+    df_issuer_credit_event_id = df.where((df >= 1) & (df <= 12), -999999)
+    id = 0
+
+    for issuer in tqdm(df_issuer_credit_event_id.iloc[:, :].columns, desc='Creation credit events id df'):
+
+        #id = 0
+        col = df_issuer_credit_event_id[issuer]
+        # Work backwards through the column
+        for i in reversed(range(len(col))):
+
+            if col.iloc[i] == 1:
+                id += 1
+                col.iloc[i] = id
+            elif (col.iloc[i] > 1) & (col.iloc[i] <= 12):
+                col.iloc[i] = id
+
+    return df_issuer_credit_event_id
+
+#df_issuer_credit_event_id_monthly = df_credit_event_id(df_issuer_rating_nb_months_next_change_monthly)
+df_issuer_downgrade_id_monthly = df_credit_event_id(df_issuer_rating_nb_months_next_downgrade_monthly)
+df_issuer_upgrade_id_monthly = df_credit_event_id(df_issuer_rating_nb_months_next_upgrade_monthly)
+
+
 
 # %%
 # **********************************************************
@@ -641,6 +743,14 @@ dic_ind_variables_common_monthly = {}
 dic_dep_variables_firm_monthly['next_12m_downgrade'] = df_issuer_rating_downgrade_monthly
 dic_dep_variables_firm_monthly['next_12m_upgrade'] = df_issuer_rating_upgrade_monthly
 
+#dic_dep_variables_firm_monthly['credit_event_id'] = df_issuer_credit_event_id_monthly
+#dic_dep_variables_firm_monthly['time_until_next_change'] = df_issuer_rating_nb_months_next_change_monthly
+dic_dep_variables_firm_monthly['time_until_next_downgrade'] = df_issuer_rating_nb_months_next_downgrade_monthly
+dic_dep_variables_firm_monthly['time_until_next_upgrade'] = df_issuer_rating_nb_months_next_upgrade_monthly
+dic_dep_variables_firm_monthly['downgrade_id'] = df_issuer_downgrade_id_monthly
+dic_dep_variables_firm_monthly['upgrade_id'] = df_issuer_upgrade_id_monthly
+dic_dep_variables_firm_monthly['rating_cat_id'] = df_issuer_rating_numeric_monthly
+
 # Independent variables - Firm specific variables
 dic_ind_variables_firm_monthly['DD'] = df_DD_monthly
 
@@ -866,7 +976,9 @@ plt.show()
 plt.close()
 
 # Plot the distribution of the different independent variables
-df_data_ind_variables = df_data.drop(['DATES', 'Issuer', 'next_12m_downgrade', 'next_12m_upgrade'], axis=1)
+df_data_ind_variables = df_data.drop(['DATES', 'Issuer', 'next_12m_downgrade', 'next_12m_upgrade',
+                                      'downgrade_id', 'upgrade_id', 'rating_cat_id',
+                                      'time_until_next_downgrade', 'time_until_next_upgrade'], axis=1)
 for i in df_data_ind_variables:
     print(i)
     sns.set(context='paper', style='ticks', palette='bright', font_scale=1.0)
@@ -885,7 +997,9 @@ for i in df_data_ind_variables:
 
 
 # *** Summary statistics ***
-df_data_variables = df_data.drop(['DATES', 'Issuer'], axis=1)
+df_data_variables = df_data.drop(['DATES', 'Issuer',
+                                  'downgrade_id', 'upgrade_id', 'rating_cat_id',
+                                  'time_until_next_downgrade', 'time_until_next_upgrade'], axis=1)
 df_data_describe = df_data_variables.describe()
 
 #df_data_downgrade = df_data.drop(['DATES', 'Issuer', 'next_12m_upgrade'], axis=1)
@@ -899,10 +1013,19 @@ df_upgrade_mean = df_data_variables.groupby('next_12m_upgrade').mean()
 # *** Section: Preprocessing - Resampling: Over-sampling ***
 # **********************************************************
 
+# TODO: change text for upgrade for check data
 
 def resampling_data(dep_var, df_data, dep_var_to_remove):
 
-    df_data_dep_var = df_data.drop(['DATES', 'Issuer', dep_var_to_remove], axis=1)
+    # Drop all rows where 'rating_cat_id' equals max id (downgrade) or min id (upgrade)
+    if dep_var == 'next_12m_downgrade':
+        df_data = df_data[df_data['rating_cat_id'] != df_data['rating_cat_id'].max()]
+    if dep_var == 'next_12m_upgrade':
+        df_data = df_data[df_data['rating_cat_id'] != df_data['rating_cat_id'].min()]
+
+    df_data_dep_var = df_data.drop(['DATES', 'Issuer',
+                                    'downgrade_id', 'upgrade_id',
+                                    'time_until_next_downgrade', 'time_until_next_upgrade', dep_var_to_remove], axis=1)
     df_data_dep_var_X = df_data_dep_var.loc[:, df_data_dep_var.columns != dep_var]
     df_data_dep_var_y = df_data_dep_var[dep_var]
 
@@ -913,16 +1036,20 @@ def resampling_data(dep_var, df_data, dep_var_to_remove):
     # Check data after resampling
     print('{} - Check data after resampling:'.format(dep_var))
     print('Number of observations after resampling: ', len(df_data_dep_var_X_res))
-    print('Number of no downgrade after resampling:', len(df_data_dep_var_y_res[df_data_dep_var_y_res == 0]))
-    print('Number of downgrade after resampling:', len(df_data_dep_var_y_res[df_data_dep_var_y_res == 1]))
-    print('Proportion of no downgrade in oversampled data is ', len(df_data_dep_var_y_res[df_data_dep_var_y_res == 0]) / len(df_data_dep_var_X_res))
-    print('Proportion of downgrade in oversampled data is ', len(df_data_dep_var_y_res[df_data_dep_var_y_res == 1]) / len(df_data_dep_var_X_res))
+    print('Number of no {} after resampling:'.format(dep_var), len(df_data_dep_var_y_res[df_data_dep_var_y_res == 0]))
+    print('Number of {} after resampling:'.format(dep_var), len(df_data_dep_var_y_res[df_data_dep_var_y_res == 1]))
+    print('Proportion of no {} in oversampled data is '.format(dep_var), len(df_data_dep_var_y_res[df_data_dep_var_y_res == 0]) / len(df_data_dep_var_X_res))
+    print('Proportion of {} in oversampled data is '.format(dep_var), len(df_data_dep_var_y_res[df_data_dep_var_y_res == 1]) / len(df_data_dep_var_X_res))
 
     df_data_dep_var_res = df_data_dep_var_X_res.join(df_data_dep_var_y_res)
     # Reorder the columns to put the y column first
     cols = [df_data_dep_var_y_res.name] + [col for col in df_data_dep_var_res.columns if col != df_data_dep_var_y_res.name]
     df_data_dep_var_res = df_data_dep_var_res[cols]
 
+    # Round rating category
+    df_data_dep_var_res['rating_cat_id'] = df_data_dep_var_res['rating_cat_id'].round()
+
+    # ***
     # Scatter plot df_data_dep_var_res before and after resampling
     # Before resampling
     sns.set(context='paper', style='ticks', palette='bright', font_scale=1.0)
@@ -976,16 +1103,42 @@ df_data_upgrade, df_data_upgrade_res = resampling_data(dep_var='next_12m_upgrade
 
 # %%
 # **********************************************************
-# *** Section:  Logit regression                         ***
+# *** Section:  Logit regression Fit                     ***
 # **********************************************************
 
-# TODO: Run ok until here
 
-# TODO: Cluster Robust std ? (I technically don't care?, I want to measure to quality of predictions)
-# TODO: Constant
-# TODO: winzorization
-# TODO: marginal effect
-# TODO: matrice de confusion
+# Creation of data test dataframe (real data)
+df_data_test_downgrade = df_data[df_data['rating_cat_id'] != df_data['rating_cat_id'].max()]
+df_data_test_upgrade = df_data[df_data['rating_cat_id'] != df_data['rating_cat_id'].min()]
+
+# Addition of interaction effect (resample + real data)
+def addition_interaction(df, var_range):
+    df_copy = copy.deepcopy(df)
+
+    # Creation of dummy variables, with rating == 2 as the reference
+    df_copy = pd.get_dummies(df_copy, columns=['rating_cat_id'], prefix='rating', dtype=int).drop(columns=['rating_2.0'])
+    binary_var = df_copy.columns[-1]
+    variables_for_interaction = df_copy.columns[var_range[0]:var_range[1]].tolist()
+
+    # Create interaction terms and add them to the DataFrame
+    for var in variables_for_interaction:
+        interaction_column_name = f'{var}:{binary_var}'
+        df_copy[interaction_column_name] = df_copy[var] * df_copy[binary_var]
+    return df_copy
+
+# Resampled data
+df_data_downgrade_res = addition_interaction(df=df_data_downgrade_res, var_range = [1,1+8])
+df_data_upgrade_res = addition_interaction(df=df_data_upgrade_res, var_range = [1,1+8])
+
+# Real data
+# Data not resampled
+df_data_downgrade = addition_interaction(df=df_data_downgrade, var_range = [1,1+8])
+df_data_upgrade = addition_interaction(df=df_data_upgrade, var_range = [1,1+8])
+
+# Test data
+df_data_test_downgrade = addition_interaction(df=df_data_test_downgrade, var_range = [8,8+8])
+df_data_test_upgrade = addition_interaction(df=df_data_test_upgrade, var_range = [8,8+8])
+
 
 # *** Downgrade ***
 
@@ -995,59 +1148,213 @@ df_data_downgrade_res_X = sm.add_constant(df_data_downgrade_res_X)
 df_data_downgrade_res_y = df_data_downgrade_res['next_12m_downgrade']
 
 logit_mod = sm.Logit(df_data_downgrade_res_y, df_data_downgrade_res_X)
-logit_res = logit_mod.fit()
+logit_res = logit_mod.fit(cov_type='HC3')
 print(logit_res.summary2())
 print(logit_res.summary())
 
 df_downgrade_params = pd.Series(logit_res.params)
 
 # Model estimated rating downgrade probability within next 12m (real data)
-df_data_test = copy.deepcopy(df_data)
-df_data_test_y = df_data_test['next_12m_downgrade']
+#df_data_test = copy.deepcopy(df_data)
+#df_data_test_y = df_data_test['next_12m_downgrade']
 
-df_data_test['y_index_downgrade_predict'] = (sm.add_constant(df_data_downgrade.loc[:, df_data_downgrade.columns != 'next_12m_downgrade']) * df_downgrade_params).sum(axis=1)
-df_data_test['estimated_proba_downgrade_next_12m'] = 1 / (1 + np.exp(-df_data_test['y_index_downgrade_predict']))
+df_data_test_downgrade['y_index_downgrade_predict'] = (sm.add_constant(df_data_downgrade.loc[:, df_data_downgrade.columns != 'next_12m_downgrade']) * df_downgrade_params).sum(axis=1)
+df_data_test_downgrade['estimated_proba_downgrade_next_12m'] = 1 / (1 + np.exp(-df_data_test_downgrade['y_index_downgrade_predict']))
 
-# *** Evaluation of the model (real data) ***
-df_data_downgrade_result_mean = df_data_test.drop(['DATES', 'Issuer'], axis=1).groupby('next_12m_downgrade').mean()
-
-# Confusion Matrix
-
-'''
-xxx = df_data_test['estimated_proba_downgrade_next_12m']
-'''
-
-threshold = 0.75
-df_data_test['estimated_proba_downgrade_next_12m_round'] = [1 if p > threshold else 0 for p in df_data_test['estimated_proba_downgrade_next_12m']]
-df_data_test_y_pred_round = df_data_test['estimated_proba_downgrade_next_12m_round']
-
-from sklearn.metrics import accuracy_score
-print(accuracy_score(df_data_test_y, df_data_test_y_pred_round))
-
-
-from sklearn.metrics import confusion_matrix
-confusion_matrix = confusion_matrix(df_data_test_y, df_data_test_y_pred_round)
-print(confusion_matrix)
-
-
-# ROC
-
-'''
-xx = sm.add_constant(df_data_downgrade_result.loc[:, df_data_downgrade_result.columns != 'next_12m_downgrade']) * df_downgrade_params
-'''
+# Marginal effects
 
 
 
+# *** Upgrade ***
 
-
-
-
-
-# Upgrade
+# Fitting the logit regression (resample data)
 df_data_upgrade_res_X = df_data_upgrade_res.loc[:, df_data_upgrade_res.columns != 'next_12m_upgrade']
+df_data_upgrade_res_X = sm.add_constant(df_data_upgrade_res_X)
 df_data_upgrade_res_y = df_data_upgrade_res['next_12m_upgrade']
 
 logit_mod = sm.Logit(df_data_upgrade_res_y, df_data_upgrade_res_X)
-logit_res = logit_mod.fit()
+logit_res = logit_mod.fit(cov_type='HC3')
 print(logit_res.summary2())
 print(logit_res.summary())
+
+df_upgrade_params = pd.Series(logit_res.params)
+
+# Model estimated rating upgrade probability within next 12m (real data)
+df_data_test_upgrade['y_index_upgrade_predict'] = (sm.add_constant(df_data_upgrade.loc[:, df_data_upgrade.columns != 'next_12m_upgrade']) * df_upgrade_params).sum(axis=1)
+df_data_test_upgrade['estimated_proba_upgrade_next_12m'] = 1 / (1 + np.exp(-df_data_test_upgrade['y_index_upgrade_predict']))
+
+
+# Marginal effects
+
+
+# %%
+# ******************************************************************************
+# *** Section:  Evaluation of the models (real data) - In sample validations ***
+# ******************************************************************************
+
+from sklearn.metrics import roc_auc_score
+from sklearn.metrics import roc_curve
+from sklearn.metrics import precision_recall_curve
+from sklearn.metrics import average_precision_score
+from sklearn.metrics import confusion_matrix
+from sklearn.metrics import classification_report
+from sklearn.metrics import recall_score
+from sklearn.metrics import precision_score
+from sklearn.metrics import accuracy_score
+from sklearn.metrics import balanced_accuracy_score
+
+# *** Downgrade: Evaluation of the model (real data) ***
+# *** Classification model performance ***
+
+df_data_test_downgrade_y_true = df_data_test_downgrade['next_12m_downgrade']
+
+# *** Tuning the decision threshold ***
+
+# ROC
+df_data_test_downgrade_estimated_proba = df_data_test_downgrade['estimated_proba_downgrade_next_12m']
+
+fpr, tpr, thresholds = roc_curve(df_data_test_downgrade_y_true, df_data_test_downgrade_estimated_proba)
+logit_roc_auc = roc_auc_score(df_data_test_downgrade_y_true, df_data_test_downgrade_estimated_proba)
+
+sns.set(context='paper', style='ticks', palette='bright', font_scale=1.0)
+fig, ax = plt.subplots(figsize=(12, 8), dpi=300)
+ax.set_title('ROC Curve', size=28)
+ax.plot(fpr, tpr, label='Logit Model (AUC = %0.2f)' % logit_roc_auc, linewidth=2)
+ax.plot([0, 1], [0, 1],'r--', label='Random Classifier (AUC = 0.50)')
+ax.tick_params(axis='both', labelsize=18)
+ax.set_xlabel('False Positive Rate (1 - Specificity)', size=20)
+ax.set_ylabel('True Positive Rate (Sensitivity)', size=20)
+ax.grid(True, alpha=0.4)
+plt.legend(loc='lower right', fontsize=15)
+fig.tight_layout()
+plt.show()
+# fig.savefig(Path.joinpath(paths.get('output'), 'XXXXXXXXX'.png'))
+plt.close()
+
+# Precision-Sensitivity (Recall) Curve
+precision, recall, thresholds = precision_recall_curve(df_data_test_downgrade_y_true, df_data_test_downgrade_estimated_proba)
+logit_average_precision = average_precision_score(df_data_test_downgrade_y_true, df_data_test_downgrade_estimated_proba)
+positive_class_frequency = df_data_test_downgrade_y_true.sum() / len(df_data_test_downgrade_y_true)
+
+sns.set(context='paper', style='ticks', palette='bright', font_scale=1.0)
+fig, ax = plt.subplots(figsize=(12, 8), dpi=300)
+ax.set_title('Precision-Sensitivity Curve', size=28)
+ax.plot(recall, precision, label='Logit Model (AP = %0.2f)' % logit_average_precision, linewidth=2)
+ax.plot([0, 1], [positive_class_frequency, positive_class_frequency],'r--', label='Random Classifier (AP = %0.2f)' % positive_class_frequency)
+ax.tick_params(axis='both', labelsize=18)
+ax.set_xlabel('Sensitivity', size=20)
+ax.set_ylabel('Precision', size=20)
+ax.grid(True, alpha=0.4)
+plt.legend(loc='upper right', fontsize=15)
+fig.tight_layout()
+plt.show()
+# fig.savefig(Path.joinpath(paths.get('output'), 'XXXXXXXXX'.png'))
+plt.close()
+
+# Find the optimal threshold - F1 score
+
+thresholds = np.append(thresholds, 1)
+
+df_precision_recall_downgrade = pd.DataFrame({
+    'precision': precision,
+    'recall': recall,
+    'thresholds': thresholds
+})
+
+df_precision_recall_downgrade['f1_score'] = 2 * (precision * recall) / (precision + recall)
+
+# Plot F1-score, Precision, and Recall
+sns.set(context='paper', style='ticks', palette='bright', font_scale=1.0)
+fig, ax = plt.subplots(figsize=(12, 8), dpi=300)
+#ax.set_title('', size=28)
+ax.plot(df_precision_recall_downgrade['thresholds'], df_precision_recall_downgrade['f1_score'], label= 'F1-score', linewidth=2)
+ax.plot(df_precision_recall_downgrade['thresholds'], df_precision_recall_downgrade['precision'], label= 'Precision', linestyle='-',  linewidth=2)
+ax.plot(df_precision_recall_downgrade['thresholds'], df_precision_recall_downgrade['recall'], label= 'Sensitivity (Recall)', linestyle='-',  linewidth=2)
+
+# Add a horizontal line at y=0.75
+recall_target = 0.75
+ax.axhline(y=recall_target, linestyle='--', linewidth=1.5, label=f'Sensitivity (Recall) = {recall_target}')
+
+# Find the threshold where Recall crosses y=0.75
+recall = df_precision_recall_downgrade['recall']
+precision = df_precision_recall_downgrade['precision']
+thresholds = df_precision_recall_downgrade['thresholds']
+
+# Find closest threshold
+closest_idx = (np.abs(recall - recall_target)).idxmin()  # Index where recall is closest to y=0.75
+threshold_at_y = thresholds[closest_idx]
+recall_value_at_threshold = recall[closest_idx]
+precision_value_at_threshold = precision[closest_idx]
+
+# Add horizontal line at recall_value_at_threshold
+ax.axhline(y=precision_value_at_threshold, linestyle='--', linewidth=1.5, label=f'Precision = {precision_value_at_threshold:.2f}')
+
+# Add vertical line at the threshold
+ax.axvline(x=threshold_at_y, linestyle='--', linewidth=1.5, label=f'Threshold = {threshold_at_y:.2f}')
+
+# Adjust labels, grid, and legend
+ax.tick_params(axis='both', labelsize=18)
+ax.set_xlabel('Thresholds', size=20)
+#ax.set_ylabel('F1-score', size=20)
+ax.grid(True, alpha=0.4)
+plt.legend(fontsize=15)
+fig.tight_layout()
+plt.show()
+# fig.savefig(Path.joinpath(paths.get('output'), 'XXXXXXXXX'.png'))
+plt.close()
+
+
+# *** Other mesures of performance ***
+
+# Evolution of proba of downgrade between 36 months to 1 month to downgrade
+df_data_downgrade_test_stats_monthly = df_data_test_downgrade.drop(['DATES', 'Issuer'], axis=1).groupby('time_until_next_downgrade').mean()
+y = df_data_downgrade_test_stats_monthly['estimated_proba_downgrade_next_12m'][(df_data_downgrade_test_stats_monthly.index >= 1) & (df_data_downgrade_test_stats_monthly.index <= 36)]
+
+sns.set(context='paper', style='ticks', palette='bright', font_scale=1.0)
+fig, ax = plt.subplots(figsize=(12, 8), dpi=300)
+# ax.set_title('', size=28)
+ax.plot(y, marker='o', linestyle='-', linewidth=2)
+ax.tick_params(axis='both', labelsize=18)
+ax.set_xticks(np.arange(0, len(y), 6))
+ax.set_xlabel('Nb of months until downgrade', size=20)
+ax.set_ylabel('Estimated probability of downgrade within 12m', size=20)
+ax.grid(True, alpha=0.4)
+#plt.legend()
+fig.tight_layout()
+plt.show()
+# fig.savefig(Path.joinpath(paths.get('output'), 'XXXXXXXXX'.png'))
+plt.close()
+
+
+# *** Class prediction (for a given threshold) ***
+threshold = threshold_at_y
+df_data_test_downgrade['y_pred'] = [1 if p > threshold else 0 for p in df_data_test_downgrade['estimated_proba_downgrade_next_12m']]
+df_data_test_downgrade_y_pred = df_data_test_downgrade['y_pred']
+
+# Confusion Matrix (for a given threshold)
+confusion_matrix = confusion_matrix(df_data_test_downgrade_y_true, df_data_test_downgrade_y_pred)
+
+# Classification report (for a given threshold)
+classification_report = classification_report(df_data_test_downgrade_y_true, df_data_test_downgrade_y_pred)
+
+# Sensitivity (Recall) (for a given threshold)
+recall_score = recall_score(df_data_test_downgrade_y_true, df_data_test_downgrade_y_pred, average='binary')
+
+# Precision (for a given threshold)
+precision_score = precision_score(df_data_test_downgrade_y_true, df_data_test_downgrade_y_pred, average='binary')
+
+# Accuracy (for a given threshold)
+accuracy_score = accuracy_score(df_data_test_downgrade_y_true, df_data_test_downgrade_y_pred)
+
+# Balance accuracy (for a given threshold)
+balanced_accuracy = balanced_accuracy_score(df_data_test_downgrade_y_true, df_data_test_downgrade_y_pred)
+
+# Coefficient of discriminations
+df_data_test_downgrade_mean = df_data_test_downgrade.drop(['DATES', 'Issuer'], axis=1).groupby('next_12m_downgrade').mean()
+s_data_test_downgrade_mean_proba = pd.Series(df_data_test_downgrade_mean['estimated_proba_downgrade_next_12m'], name='average_estimated_proba_downgrade')
+s_data_test_downgrade_mean_proba.loc['Coefficient of discrimination'] = s_data_test_downgrade_mean_proba.loc[1] - s_data_test_downgrade_mean_proba.loc[0]
+df_data_test_downgrade_mean_proba = pd.DataFrame(s_data_test_downgrade_mean_proba)
+
+
+# *** Upgrade: Evaluation of the model (real data) ***
+# *** Classification model performance ***
