@@ -1196,7 +1196,7 @@ from sklearn.metrics import roc_auc_score
 from sklearn.metrics import roc_curve
 from sklearn.metrics import precision_recall_curve
 from sklearn.metrics import average_precision_score
-from sklearn.metrics import confusion_matrix
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 from sklearn.metrics import classification_report
 from sklearn.metrics import recall_score
 from sklearn.metrics import precision_score
@@ -1332,20 +1332,24 @@ df_data_test_downgrade['y_pred'] = [1 if p > threshold else 0 for p in df_data_t
 df_data_test_downgrade_y_pred = df_data_test_downgrade['y_pred']
 
 # Confusion Matrix (for a given threshold)
-confusion_matrix = confusion_matrix(df_data_test_downgrade_y_true, df_data_test_downgrade_y_pred)
+cm = confusion_matrix(df_data_test_downgrade_y_true, df_data_test_downgrade_y_pred, labels=[1, 0], normalize='true')
+disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=[1, 0])
+disp.plot()
+plt.gcf().set_dpi(300)
+plt.show()
+#plt.savefig(Path.joinpath(paths.get('output'), 'XXXXXXXXX'.png'), dpi=300, bbox_inches='tight')
+plt.close()
 
 # Classification report (for a given threshold)
 classification_report = classification_report(df_data_test_downgrade_y_true, df_data_test_downgrade_y_pred)
+print(classification_report)
 
 # Sensitivity (Recall) (for a given threshold)
 recall_score = recall_score(df_data_test_downgrade_y_true, df_data_test_downgrade_y_pred, average='binary')
-
 # Precision (for a given threshold)
 precision_score = precision_score(df_data_test_downgrade_y_true, df_data_test_downgrade_y_pred, average='binary')
-
 # Accuracy (for a given threshold)
 accuracy_score = accuracy_score(df_data_test_downgrade_y_true, df_data_test_downgrade_y_pred)
-
 # Balance accuracy (for a given threshold)
 balanced_accuracy = balanced_accuracy_score(df_data_test_downgrade_y_true, df_data_test_downgrade_y_pred)
 
