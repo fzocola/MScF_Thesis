@@ -1203,162 +1203,181 @@ from sklearn.metrics import precision_score
 from sklearn.metrics import accuracy_score
 from sklearn.metrics import balanced_accuracy_score
 
+def model_evaluation(df_data_test, credit_event_type, recall_target):
+
+    if credit_event_type == 'downgrade':
+        df_data_test_y_true = df_data_test['next_12m_downgrade']
+        df_data_test_estimated_proba = df_data_test['estimated_proba_downgrade_next_12m']
+    if credit_event_type == 'upgrade':
+        df_data_test_y_true = df_data_test['next_12m_upgrade']
+        df_data_test_estimated_proba = df_data_test['estimated_proba_upgrade_next_12m']
+
+    # *** Tuning the decision threshold ***
+
+    # ROC
+    fpr, tpr, thresholds = roc_curve(df_data_test_y_true, df_data_test_estimated_proba)
+    logit_roc_auc = roc_auc_score(df_data_test_y_true, df_data_test_estimated_proba)
+
+    sns.set(context='paper', style='ticks', palette='bright', font_scale=1.0)
+    fig, ax = plt.subplots(figsize=(12, 8), dpi=300)
+    ax.set_title('ROC Curve - {}'.format(credit_event_type), size=28)
+    ax.plot(fpr, tpr, label='Logit Model (AUC = %0.2f)' % logit_roc_auc, linewidth=2)
+    ax.plot([0, 1], [0, 1], 'r--', label='Random Classifier (AUC = 0.50)')
+    ax.tick_params(axis='both', labelsize=18)
+    ax.set_xlabel('False Positive Rate (1 - Specificity)', size=20)
+    ax.set_ylabel('True Positive Rate (Sensitivity)', size=20)
+    ax.grid(True, alpha=0.4)
+    plt.legend(loc='lower right', fontsize=15)
+    fig.tight_layout()
+    plt.show()
+    # fig.savefig(Path.joinpath(paths.get('output'), 'XXXXXXXXX'.png'))
+    plt.close()
+
+    # Precision-Sensitivity (Recall) Curve
+    precision, recall, thresholds = precision_recall_curve(df_data_test_y_true, df_data_test_estimated_proba)
+    logit_average_precision = average_precision_score(df_data_test_y_true, df_data_test_estimated_proba)
+    positive_class_frequency = df_data_test_y_true.sum() / len(df_data_test_y_true)
+
+    sns.set(context='paper', style='ticks', palette='bright', font_scale=1.0)
+    fig, ax = plt.subplots(figsize=(12, 8), dpi=300)
+    ax.set_title('Precision-Sensitivity Curve', size=28)
+    ax.plot(recall, precision, label='Logit Model (AP = %0.2f)' % logit_average_precision, linewidth=2)
+    ax.plot([0, 1], [positive_class_frequency, positive_class_frequency], 'r--', label='Random Classifier (AP = %0.2f)' % positive_class_frequency)
+    ax.tick_params(axis='both', labelsize=18)
+    ax.set_xlabel('Sensitivity', size=20)
+    ax.set_ylabel('Precision', size=20)
+    ax.grid(True, alpha=0.4)
+    plt.legend(loc='upper right', fontsize=15)
+    fig.tight_layout()
+    plt.show()
+    # fig.savefig(Path.joinpath(paths.get('output'), 'XXXXXXXXX'.png'))
+    plt.close()
+
+    # Find the optimal threshold - F1 score
+
+    thresholds = np.append(thresholds, 1)
+
+    df_precision_recall = pd.DataFrame({
+        'precision': precision,
+        'recall': recall,
+        'thresholds': thresholds
+    })
+
+    df_precision_recall['f1_score'] = 2 * (precision * recall) / (precision + recall)
+
+    # Plot F1-score, Precision, and Recall
+    sns.set(context='paper', style='ticks', palette='bright', font_scale=1.0)
+    fig, ax = plt.subplots(figsize=(12, 8), dpi=300)
+    # ax.set_title('', size=28)
+    ax.plot(df_precision_recall['thresholds'], df_precision_recall['f1_score'], label='F1-score', linewidth=2)
+    ax.plot(df_precision_recall['thresholds'], df_precision_recall['precision'], label='Precision', linestyle='-', linewidth=2)
+    ax.plot(df_precision_recall['thresholds'], df_precision_recall['recall'], label='Sensitivity (Recall)', linestyle='-', linewidth=2)
+
+    # Add a horizontal line at y=recall_target
+    ax.axhline(y=recall_target, linestyle='--', linewidth=1.5, label=f'Sensitivity (Recall) = {recall_target}')
+
+    # Find the threshold where Recall crosses y=0.75
+    recall = df_precision_recall['recall']
+    precision = df_precision_recall['precision']
+    thresholds = df_precision_recall['thresholds']
+
+    # Find closest threshold
+    closest_idx = (np.abs(recall - recall_target)).idxmin()  # Index where recall is closest to y=0.75
+    threshold_at_y = thresholds[closest_idx]
+    recall_value_at_threshold = recall[closest_idx]
+    precision_value_at_threshold = precision[closest_idx]
+
+    # Add horizontal line at recall_value_at_threshold
+    ax.axhline(y=precision_value_at_threshold, linestyle='--', linewidth=1.5, label=f'Precision = {precision_value_at_threshold:.2f}')
+
+    # Add vertical line at the threshold
+    ax.axvline(x=threshold_at_y, linestyle='--', linewidth=1.5, label=f'Threshold = {threshold_at_y:.2f}')
+
+    # Adjust labels, grid, and legend
+    ax.tick_params(axis='both', labelsize=18)
+    ax.set_xlabel('Thresholds', size=20)
+    # ax.set_ylabel('F1-score', size=20)
+    ax.grid(True, alpha=0.4)
+    plt.legend(fontsize=15)
+    fig.tight_layout()
+    plt.show()
+    # fig.savefig(Path.joinpath(paths.get('output'), 'XXXXXXXXX'.png'))
+    plt.close()
+
+
+    # *** Other mesures of performance ***
+
+    # Evolution of proba of downgrade between 36 months to 1 month to downgrade
+    if credit_event_type == 'downgrade':
+        df_data_test_stats_monthly = df_data_test.drop(['DATES', 'Issuer'], axis=1).groupby('time_until_next_downgrade').mean()
+        y = df_data_test_stats_monthly['estimated_proba_downgrade_next_12m'][(df_data_test_stats_monthly.index >= 1) & (df_data_test_stats_monthly.index <= 36)]
+
+    if credit_event_type == 'upgrade':
+        df_data_test_stats_monthly = df_data_test.drop(['DATES', 'Issuer'], axis=1).groupby('time_until_next_upgrade').mean()
+        y = df_data_test_stats_monthly['estimated_proba_upgrade_next_12m'][(df_data_test_stats_monthly.index >= 1) & (df_data_test_stats_monthly.index <= 36)]
+
+    sns.set(context='paper', style='ticks', palette='bright', font_scale=1.0)
+    fig, ax = plt.subplots(figsize=(12, 8), dpi=300)
+    # ax.set_title('', size=28)
+    ax.plot(y, marker='o', linestyle='-', linewidth=2)
+    ax.tick_params(axis='both', labelsize=18)
+    ax.set_xticks(np.arange(0, len(y), 6))
+    ax.set_xlabel('Nb of months until {}'.format(credit_event_type), size=20)
+    ax.set_ylabel('Estimated probability of {} within 12m'.format(credit_event_type), size=20)
+    ax.grid(True, alpha=0.4)
+    # plt.legend()
+    fig.tight_layout()
+    plt.show()
+    # fig.savefig(Path.joinpath(paths.get('output'), 'XXXXXXXXX'.png'))
+    plt.close()
+
+
+    # *** Class prediction (for a given threshold) ***
+
+    threshold = threshold_at_y
+    df_data_test['y_pred'] = [1 if p > threshold else 0 for p in df_data_test_estimated_proba]
+    df_data_test_y_pred = df_data_test['y_pred']
+
+    # Confusion Matrix (for a given threshold)
+    cm = confusion_matrix(df_data_test_y_true, df_data_test_y_pred, labels=[1, 0], normalize='true')
+    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=[1, 0])
+    disp.plot()
+    plt.gcf().set_dpi(300)
+    plt.show()
+    # plt.savefig(Path.joinpath(paths.get('output'), 'XXXXXXXXX'.png'), dpi=300, bbox_inches='tight')
+    plt.close()
+
+    # Classification report (for a given threshold)
+    classification_report_t = classification_report(df_data_test_y_true, df_data_test_y_pred)
+    print(classification_report_t)
+
+    # Sensitivity (Recall) (for a given threshold)
+    recall_score_t = recall_score(df_data_test_y_true, df_data_test_y_pred, average='binary')
+    # Precision (for a given threshold)
+    precision_score_t = precision_score(df_data_test_y_true, df_data_test_y_pred, average='binary')
+    # Accuracy (for a given threshold)
+    accuracy_score_t = accuracy_score(df_data_test_y_true, df_data_test_y_pred)
+    # Balance accuracy (for a given threshold)
+    balanced_accuracy_t = balanced_accuracy_score(df_data_test_y_true, df_data_test_y_pred)
+
+    # Coefficient of discriminations
+    if credit_event_type == 'downgrade':
+        df_data_test_mean = df_data_test.drop(['DATES', 'Issuer'], axis=1).groupby('next_12m_downgrade').mean()
+        s_data_test_mean_proba = pd.Series(df_data_test_mean['estimated_proba_downgrade_next_12m'], name='average_estimated_proba_downgrade')
+    if credit_event_type == 'upgrade':
+        df_data_test_mean = df_data_test.drop(['DATES', 'Issuer'], axis=1).groupby('next_12m_upgrade').mean()
+        s_data_test_mean_proba = pd.Series(df_data_test_mean['estimated_proba_upgrade_next_12m'], name='average_estimated_proba_upgrade')
+
+    s_data_test_mean_proba.loc['Coefficient of discrimination'] = s_data_test_mean_proba.loc[1] - s_data_test_mean_proba.loc[0]
+    df_data_test_mean_proba = pd.DataFrame(s_data_test_mean_proba)
+
+    return classification_report_t, df_data_test_mean_proba
+
+
 # *** Downgrade: Evaluation of the model (real data) ***
 # *** Classification model performance ***
-
-df_data_test_downgrade_y_true = df_data_test_downgrade['next_12m_downgrade']
-
-# *** Tuning the decision threshold ***
-
-# ROC
-df_data_test_downgrade_estimated_proba = df_data_test_downgrade['estimated_proba_downgrade_next_12m']
-
-fpr, tpr, thresholds = roc_curve(df_data_test_downgrade_y_true, df_data_test_downgrade_estimated_proba)
-logit_roc_auc = roc_auc_score(df_data_test_downgrade_y_true, df_data_test_downgrade_estimated_proba)
-
-sns.set(context='paper', style='ticks', palette='bright', font_scale=1.0)
-fig, ax = plt.subplots(figsize=(12, 8), dpi=300)
-ax.set_title('ROC Curve', size=28)
-ax.plot(fpr, tpr, label='Logit Model (AUC = %0.2f)' % logit_roc_auc, linewidth=2)
-ax.plot([0, 1], [0, 1],'r--', label='Random Classifier (AUC = 0.50)')
-ax.tick_params(axis='both', labelsize=18)
-ax.set_xlabel('False Positive Rate (1 - Specificity)', size=20)
-ax.set_ylabel('True Positive Rate (Sensitivity)', size=20)
-ax.grid(True, alpha=0.4)
-plt.legend(loc='lower right', fontsize=15)
-fig.tight_layout()
-plt.show()
-# fig.savefig(Path.joinpath(paths.get('output'), 'XXXXXXXXX'.png'))
-plt.close()
-
-# Precision-Sensitivity (Recall) Curve
-precision, recall, thresholds = precision_recall_curve(df_data_test_downgrade_y_true, df_data_test_downgrade_estimated_proba)
-logit_average_precision = average_precision_score(df_data_test_downgrade_y_true, df_data_test_downgrade_estimated_proba)
-positive_class_frequency = df_data_test_downgrade_y_true.sum() / len(df_data_test_downgrade_y_true)
-
-sns.set(context='paper', style='ticks', palette='bright', font_scale=1.0)
-fig, ax = plt.subplots(figsize=(12, 8), dpi=300)
-ax.set_title('Precision-Sensitivity Curve', size=28)
-ax.plot(recall, precision, label='Logit Model (AP = %0.2f)' % logit_average_precision, linewidth=2)
-ax.plot([0, 1], [positive_class_frequency, positive_class_frequency],'r--', label='Random Classifier (AP = %0.2f)' % positive_class_frequency)
-ax.tick_params(axis='both', labelsize=18)
-ax.set_xlabel('Sensitivity', size=20)
-ax.set_ylabel('Precision', size=20)
-ax.grid(True, alpha=0.4)
-plt.legend(loc='upper right', fontsize=15)
-fig.tight_layout()
-plt.show()
-# fig.savefig(Path.joinpath(paths.get('output'), 'XXXXXXXXX'.png'))
-plt.close()
-
-# Find the optimal threshold - F1 score
-
-thresholds = np.append(thresholds, 1)
-
-df_precision_recall_downgrade = pd.DataFrame({
-    'precision': precision,
-    'recall': recall,
-    'thresholds': thresholds
-})
-
-df_precision_recall_downgrade['f1_score'] = 2 * (precision * recall) / (precision + recall)
-
-# Plot F1-score, Precision, and Recall
-sns.set(context='paper', style='ticks', palette='bright', font_scale=1.0)
-fig, ax = plt.subplots(figsize=(12, 8), dpi=300)
-#ax.set_title('', size=28)
-ax.plot(df_precision_recall_downgrade['thresholds'], df_precision_recall_downgrade['f1_score'], label= 'F1-score', linewidth=2)
-ax.plot(df_precision_recall_downgrade['thresholds'], df_precision_recall_downgrade['precision'], label= 'Precision', linestyle='-',  linewidth=2)
-ax.plot(df_precision_recall_downgrade['thresholds'], df_precision_recall_downgrade['recall'], label= 'Sensitivity (Recall)', linestyle='-',  linewidth=2)
-
-# Add a horizontal line at y=0.75
-recall_target = 0.75
-ax.axhline(y=recall_target, linestyle='--', linewidth=1.5, label=f'Sensitivity (Recall) = {recall_target}')
-
-# Find the threshold where Recall crosses y=0.75
-recall = df_precision_recall_downgrade['recall']
-precision = df_precision_recall_downgrade['precision']
-thresholds = df_precision_recall_downgrade['thresholds']
-
-# Find closest threshold
-closest_idx = (np.abs(recall - recall_target)).idxmin()  # Index where recall is closest to y=0.75
-threshold_at_y = thresholds[closest_idx]
-recall_value_at_threshold = recall[closest_idx]
-precision_value_at_threshold = precision[closest_idx]
-
-# Add horizontal line at recall_value_at_threshold
-ax.axhline(y=precision_value_at_threshold, linestyle='--', linewidth=1.5, label=f'Precision = {precision_value_at_threshold:.2f}')
-
-# Add vertical line at the threshold
-ax.axvline(x=threshold_at_y, linestyle='--', linewidth=1.5, label=f'Threshold = {threshold_at_y:.2f}')
-
-# Adjust labels, grid, and legend
-ax.tick_params(axis='both', labelsize=18)
-ax.set_xlabel('Thresholds', size=20)
-#ax.set_ylabel('F1-score', size=20)
-ax.grid(True, alpha=0.4)
-plt.legend(fontsize=15)
-fig.tight_layout()
-plt.show()
-# fig.savefig(Path.joinpath(paths.get('output'), 'XXXXXXXXX'.png'))
-plt.close()
-
-
-# *** Other mesures of performance ***
-
-# Evolution of proba of downgrade between 36 months to 1 month to downgrade
-df_data_downgrade_test_stats_monthly = df_data_test_downgrade.drop(['DATES', 'Issuer'], axis=1).groupby('time_until_next_downgrade').mean()
-y = df_data_downgrade_test_stats_monthly['estimated_proba_downgrade_next_12m'][(df_data_downgrade_test_stats_monthly.index >= 1) & (df_data_downgrade_test_stats_monthly.index <= 36)]
-
-sns.set(context='paper', style='ticks', palette='bright', font_scale=1.0)
-fig, ax = plt.subplots(figsize=(12, 8), dpi=300)
-# ax.set_title('', size=28)
-ax.plot(y, marker='o', linestyle='-', linewidth=2)
-ax.tick_params(axis='both', labelsize=18)
-ax.set_xticks(np.arange(0, len(y), 6))
-ax.set_xlabel('Nb of months until downgrade', size=20)
-ax.set_ylabel('Estimated probability of downgrade within 12m', size=20)
-ax.grid(True, alpha=0.4)
-#plt.legend()
-fig.tight_layout()
-plt.show()
-# fig.savefig(Path.joinpath(paths.get('output'), 'XXXXXXXXX'.png'))
-plt.close()
-
-
-# *** Class prediction (for a given threshold) ***
-threshold = threshold_at_y
-df_data_test_downgrade['y_pred'] = [1 if p > threshold else 0 for p in df_data_test_downgrade['estimated_proba_downgrade_next_12m']]
-df_data_test_downgrade_y_pred = df_data_test_downgrade['y_pred']
-
-# Confusion Matrix (for a given threshold)
-cm = confusion_matrix(df_data_test_downgrade_y_true, df_data_test_downgrade_y_pred, labels=[1, 0], normalize='true')
-disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=[1, 0])
-disp.plot()
-plt.gcf().set_dpi(300)
-plt.show()
-#plt.savefig(Path.joinpath(paths.get('output'), 'XXXXXXXXX'.png'), dpi=300, bbox_inches='tight')
-plt.close()
-
-# Classification report (for a given threshold)
-classification_report = classification_report(df_data_test_downgrade_y_true, df_data_test_downgrade_y_pred)
-print(classification_report)
-
-# Sensitivity (Recall) (for a given threshold)
-recall_score = recall_score(df_data_test_downgrade_y_true, df_data_test_downgrade_y_pred, average='binary')
-# Precision (for a given threshold)
-precision_score = precision_score(df_data_test_downgrade_y_true, df_data_test_downgrade_y_pred, average='binary')
-# Accuracy (for a given threshold)
-accuracy_score = accuracy_score(df_data_test_downgrade_y_true, df_data_test_downgrade_y_pred)
-# Balance accuracy (for a given threshold)
-balanced_accuracy = balanced_accuracy_score(df_data_test_downgrade_y_true, df_data_test_downgrade_y_pred)
-
-# Coefficient of discriminations
-df_data_test_downgrade_mean = df_data_test_downgrade.drop(['DATES', 'Issuer'], axis=1).groupby('next_12m_downgrade').mean()
-s_data_test_downgrade_mean_proba = pd.Series(df_data_test_downgrade_mean['estimated_proba_downgrade_next_12m'], name='average_estimated_proba_downgrade')
-s_data_test_downgrade_mean_proba.loc['Coefficient of discrimination'] = s_data_test_downgrade_mean_proba.loc[1] - s_data_test_downgrade_mean_proba.loc[0]
-df_data_test_downgrade_mean_proba = pd.DataFrame(s_data_test_downgrade_mean_proba)
-
+classification_report_t_downgrade, df_data_test_mean_proba_downgrade = model_evaluation(df_data_test=df_data_test_downgrade, credit_event_type='downgrade', recall_target=0.75)
 
 # *** Upgrade: Evaluation of the model (real data) ***
 # *** Classification model performance ***
+classification_report_t_downgrade, df_data_test_mean_proba_downgrade = model_evaluation(df_data_test=df_data_test_upgrade, credit_event_type='upgrade', recall_target=0.5)
