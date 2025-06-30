@@ -711,7 +711,8 @@ df_DD_monthly = df_DD(df_V=df_ev_monthly,
 df_wc_to_ta_monthly = dic_issuer_fundamental_monthly['WORK_CAP'] / dic_issuer_fundamental_monthly['TOT_ASSET']
 df_re_to_ta_monthly = dic_issuer_fundamental_monthly['RET_EARN'] / dic_issuer_fundamental_monthly['TOT_ASSET']
 df_ebit_to_ta_monthly = dic_issuer_fundamental_monthly['EBIT'] / dic_issuer_fundamental_monthly['TOT_ASSET']
-df_me_to_td_monthly = df_mkt_cap_monthly / ((dic_issuer_fundamental_monthly['LT_DEBT'] + dic_issuer_fundamental_monthly['ST_DEBT']).replace(0, np.nan))
+#df_me_to_td_monthly = df_mkt_cap_monthly / ((dic_issuer_fundamental_monthly['LT_DEBT'] + dic_issuer_fundamental_monthly['ST_DEBT']).replace(0, np.nan))
+df_me_to_td_monthly = df_mkt_cap_monthly / (dic_issuer_fundamental_monthly['TOT_ASSET'] - dic_issuer_fundamental_monthly['BOOK_EQUITY'])
 df_sales_to_ta_monthly = dic_issuer_fundamental_monthly['SALES'] / dic_issuer_fundamental_monthly['TOT_ASSET']
 
 # Duan (2012)
@@ -757,10 +758,10 @@ dic_ind_variables_firm_monthly['DD'] = df_DD_monthly
 dic_ind_variables_firm_monthly['WC/TA'] = df_wc_to_ta_monthly
 dic_ind_variables_firm_monthly['RE/TA'] = df_re_to_ta_monthly
 dic_ind_variables_firm_monthly['EBIT/TA'] = df_ebit_to_ta_monthly
-#dic_ind_variables_firm_monthly['ME/TD'] = df_me_to_td_monthly
+dic_ind_variables_firm_monthly['ME/TD'] = df_me_to_td_monthly
 dic_ind_variables_firm_monthly['SALES/TA'] = df_sales_to_ta_monthly
 
-dic_ind_variables_firm_monthly['EV/TA'] = df_ev_to_ta_monthly
+#dic_ind_variables_firm_monthly['EV/TA'] = df_ev_to_ta_monthly
 dic_ind_variables_firm_monthly['CASH/TA'] = df_cash_to_ta_monthly
 dic_ind_variables_firm_monthly['SIZE'] = df_size_monthly
 
@@ -1006,6 +1007,98 @@ df_data_describe = df_data_variables.describe()
 #df_data_upgrade = df_data.drop(['DATES', 'Issuer', 'next_12m_downgrade'], axis=1)
 df_downgrade_mean = df_data_variables.groupby('next_12m_downgrade').mean()
 df_upgrade_mean = df_data_variables.groupby('next_12m_upgrade').mean()
+
+# *** Box plot by rating category ***
+
+# DD
+sns.set(context='paper', style='ticks', palette='bright', font_scale=1.0)
+fig, ax = plt.subplots(figsize=(12, 8), dpi=300)
+ax.set_title('', size=28)
+sns.boxplot(data=df_data, x='rating_cat_id', y='DD', patch_artist=True)
+ax.tick_params(axis='both', labelsize=18)
+ax.set_xlabel('Rating Category', size=20)
+ax.set_ylabel('DD', size=20)
+ax.grid(axis='y', alpha=0.4)
+#plt.legend(fontsize=15)
+fig.tight_layout()
+plt.show()
+# fig.savefig(Path.joinpath(paths.get('output'), 'XXXXXXXXX'.png'))
+plt.close()
+
+sns.set(context='paper', style='ticks', palette='bright', font_scale=1.0)
+fig, ax = plt.subplots(figsize=(12, 8), dpi=300)
+ax.set_title('', size=28)
+sns.boxplot(data=df_data, x='rating_cat_id', y='DD', hue="next_12m_downgrade", patch_artist=True)
+ax.tick_params(axis='both', labelsize=18)
+ax.set_xlabel('Rating Category', size=20)
+ax.set_ylabel('DD', size=20)
+ax.grid(axis='y', alpha=0.4)
+#plt.legend(fontsize=15)
+fig.tight_layout()
+plt.show()
+# fig.savefig(Path.joinpath(paths.get('output'), 'XXXXXXXXX'.png'))
+plt.close()
+
+sns.set(context='paper', style='ticks', palette='bright', font_scale=1.0)
+fig, ax = plt.subplots(figsize=(12, 8), dpi=300)
+ax.set_title('', size=28)
+sns.boxplot(data=df_data, x='rating_cat_id', y='DD', hue="next_12m_upgrade", patch_artist=True)
+ax.tick_params(axis='both', labelsize=18)
+ax.set_xlabel('Rating Category', size=20)
+ax.set_ylabel('DD', size=20)
+ax.grid(axis='y', alpha=0.4)
+#plt.legend(fontsize=15)
+fig.tight_layout()
+plt.show()
+# fig.savefig(Path.joinpath(paths.get('output'), 'XXXXXXXXX'.png'))
+plt.close()
+
+# Altman z-score
+df_data['altman_z_score'] = 1.2*df_data['WC/TA'] + 1.4*df_data['RE/TA'] + 3.3*df_data['EBIT/TA'] + 0.6*df_data['ME/TD'] + 0.999*df_data['SALES/TA']
+
+sns.set(context='paper', style='ticks', palette='bright', font_scale=1.0)
+fig, ax = plt.subplots(figsize=(12, 8), dpi=300)
+ax.set_title('', size=28)
+sns.boxplot(data=df_data, x='rating_cat_id', y='altman_z_score', patch_artist=True)
+ax.tick_params(axis='both', labelsize=18)
+ax.set_xlabel('Rating Category', size=20)
+ax.set_ylabel('altman_z_score', size=20)
+ax.grid(axis='y', alpha=0.4)
+#plt.legend(fontsize=15)
+fig.tight_layout()
+plt.show()
+# fig.savefig(Path.joinpath(paths.get('output'), 'XXXXXXXXX'.png'))
+plt.close()
+
+sns.set(context='paper', style='ticks', palette='bright', font_scale=1.0)
+fig, ax = plt.subplots(figsize=(12, 8), dpi=300)
+ax.set_title('', size=28)
+sns.boxplot(data=df_data, x='rating_cat_id', y='altman_z_score', hue="next_12m_downgrade", patch_artist=True)
+ax.tick_params(axis='both', labelsize=18)
+ax.set_xlabel('Rating Category', size=20)
+ax.set_ylabel('altman_z_score', size=20)
+ax.grid(axis='y', alpha=0.4)
+#plt.legend(fontsize=15)
+fig.tight_layout()
+plt.show()
+# fig.savefig(Path.joinpath(paths.get('output'), 'XXXXXXXXX'.png'))
+plt.close()
+
+sns.set(context='paper', style='ticks', palette='bright', font_scale=1.0)
+fig, ax = plt.subplots(figsize=(12, 8), dpi=300)
+ax.set_title('', size=28)
+sns.boxplot(data=df_data, x='rating_cat_id', y='altman_z_score', hue="next_12m_upgrade")
+ax.tick_params(axis='both', labelsize=18)
+ax.set_xlabel('Rating Category', size=20)
+ax.set_ylabel('altman_z_score', size=20)
+ax.grid(axis='y', alpha=0.4)
+#plt.legend(fontsize=15)
+fig.tight_layout()
+plt.show()
+# fig.savefig(Path.joinpath(paths.get('output'), 'XXXXXXXXX'.png'))
+plt.close()
+
+df_data = df_data.drop('altman_z_score', axis=1)
 
 
 # %%
@@ -1380,4 +1473,4 @@ classification_report_t_downgrade, df_data_test_mean_proba_downgrade = model_eva
 
 # *** Upgrade: Evaluation of the model (real data) ***
 # *** Classification model performance ***
-classification_report_t_downgrade, df_data_test_mean_proba_downgrade = model_evaluation(df_data_test=df_data_test_upgrade, credit_event_type='upgrade', recall_target=0.5)
+classification_report_t_upgrade, df_data_test_mean_proba_upgrade = model_evaluation(df_data_test=df_data_test_upgrade, credit_event_type='upgrade', recall_target=0.5)
