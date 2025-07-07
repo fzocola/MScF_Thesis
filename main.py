@@ -17,14 +17,20 @@ from imblearn.over_sampling import SMOTE
 import warnings
 import statsmodels.api as sm
 from arch import arch_model
+from stargazer.stargazer import Stargazer
+import sys
 
 # Options
 pd.set_option('future.no_silent_downcasting', True)
 
 # Project directories paths
-paths = {'main': Path.cwd()}
-paths.update({'data': Path.joinpath(paths.get('main'), 'data')})
-paths.update({'scripts': Path.joinpath(paths.get('main'), 'scripts')})
+paths = {}
+paths['main'] = Path.cwd()
+paths['data'] = paths['main'] / 'data'
+paths['output'] = paths['main'] / 'output'
+paths['tables'] = paths['output'] / 'tables'
+paths['figures'] = paths['output'] / 'figures'
+
 
 # Warnings management
 #warnings.simplefilter("ignore", category=UserWarning)
@@ -154,7 +160,7 @@ dic_issuer_fundamental_daily = dic_lag_data(dic_issuer_fundamental_daily, lag=90
 dic_issuer_fundamental_monthly = dic_lag_data(dic_issuer_fundamental_monthly, lag=3)
 
 
-# *** Issuer rating preprocessing 1 - before date filtering **
+# *** Issuer rating preprocessing 1 - before date filtering ***
 
 def dic_rating_preprocessing_1(dic):
     dic_copy = copy.deepcopy(dic)
@@ -214,51 +220,7 @@ def rating_to_numeric(df):
     df_copy = df_copy.apply(lambda col: col.map(bbg_rating_to_sp_rating))
 
     # Define a mapping from S&P rating to numeric values
-    '''
-    sp_rating_to_numeric = {
-        'AAA': 1,
-        'AA+': 2, 'AA': 3, 'AA-': 4,
-        'A+': 5, 'A': 6, 'A-': 7,
-        'BBB+': 8, 'BBB': 9, 'BBB-': 10,
-        'BB+': 11, 'BB': 12, 'BB-': 13,
-        'B+': 14, 'B': 15, 'B-': 16,
-        'CCC+': 17, 'CCC': 18, 'CCC-': 19,
-        'CC': 20,
-        'C': 21,
-        'D': 22,
-    }
-    '''
-    '''
-    sp_rating_to_numeric = {
-        'AAA': 1,
-        'AA+': 1, 'AA': 1, 'AA-': 1,
-        'A+': 1, 'A': 1, 'A-': 1,
-        'BBB+': 2, 'BBB': 2, 'BBB-': 2,
-        'BB+': 3, 'BB': 3, 'BB-': 3,
-        'B+': 4, 'B': 4, 'B-': 4,
-        'CCC+': 4, 'CCC': 4, 'CCC-': 4,
-        'CC': 5,
-        'C': 5,
-        'D': 5,
-    }
-    '''
-    '''
-    # 3 categories: IG, HY, Distress
-    sp_rating_to_numeric = {
-        'AAA': 1,
-        'AA+': 1, 'AA': 1, 'AA-': 1,
-        'A+': 1, 'A': 1, 'A-': 1,
-        'BBB+': 1, 'BBB': 1, 'BBB-': 1,
-        'BB+': 2, 'BB': 2, 'BB-': 2,
-        'B+': 2, 'B': 2, 'B-': 2,
-        'CCC+': 3, 'CCC': 3, 'CCC-': 3,
-        'CC': 3,
-        'C': 3,
-        'D': 3,
-    }
-    '''
-
-    # 3 categories: IG_High Grade, IG_Low Grade, HY
+    # 3 categories: IG_High, IG_Low, HY
     sp_rating_to_numeric = {
         'AAA': 1,
         'AA+': 1, 'AA': 1, 'AA-': 1,
@@ -272,21 +234,6 @@ def rating_to_numeric(df):
         'D': 3,
     }
 
-    '''
-    # 2 categories: IG, HY
-    sp_rating_to_numeric = {
-        'AAA': 1,
-        'AA+': 1, 'AA': 1, 'AA-': 1,
-        'A+': 1, 'A': 1, 'A-': 1,
-        'BBB+': 1, 'BBB': 1, 'BBB-': 1,
-        'BB+': 2, 'BB': 2, 'BB-': 2,
-        'B+': 2, 'B': 2, 'B-': 2,
-        'CCC+': 2, 'CCC': 2, 'CCC-': 2,
-        'CC': 2,
-        'C': 2,
-        'D': 2,
-    }
-    '''
     # Apply the mapping to each column of the dataframe
     df_numeric = df_copy.apply(lambda col: col.map(sp_rating_to_numeric))
 
@@ -296,6 +243,7 @@ df_issuer_rating_numeric_daily = rating_to_numeric(df_issuer_rating_daily)
 
 
 # Creation of the downgrade, upgrade dataframe
+'''
 def create_rating_change_df(df, credit_event_type):
     df_copy = copy.deepcopy(df)
     # Create a new DataFrame with the same index and columns, filled with nan
@@ -338,9 +286,24 @@ def create_rating_change_df(df, credit_event_type):
                 df_credit_change.iat[i, df_copy.columns.get_loc(issuer)] = 1 if rating_change_detected else 0
 
     return df_credit_change
+'''
+def create_rating_change_df_1(df, credit_event_type):
+    df_copy = copy.deepcopy(df)
+    df_copy = df_copy.sort_index() # make sure dates are in order
 
-df_issuer_rating_downgrade_daily = create_rating_change_df(df_issuer_rating_numeric_daily, credit_event_type='downgrade')
-df_issuer_rating_upgrade_daily = create_rating_change_df(df_issuer_rating_numeric_daily, credit_event_type='upgrade')
+    if credit_event_type == 'downgrade':
+        # day‑to‑day change; a positive jump means a downgrade
+        df_credit_change = (df_copy.diff() > 0).astype(int)
+
+    if credit_event_type == 'upgrade':
+        # day‑to‑day change; a negative jump means an upgrade
+        df_credit_change = (df_copy.diff() < 0).astype(int)
+
+    return df_credit_change
+
+
+df_issuer_rating_downgrade_daily = create_rating_change_df_1(df_issuer_rating_numeric_daily, credit_event_type='downgrade')
+df_issuer_rating_upgrade_daily = create_rating_change_df_1(df_issuer_rating_numeric_daily, credit_event_type='upgrade')
 
 # Creation number of days since last change dataframe
 def df_nd_days_since_last_change(df):
@@ -372,9 +335,9 @@ def df_nd_days_since_last_credit_event(df, credit_event_type):
 
     for issuer in tqdm(df_copy.iloc[:, :].columns, desc='Creation nb days since last {} df'.format(credit_event_type)):
         # Identify rating changes (True where the rating has changed)
-        if credit_event_type == 'Downgrade':
+        if credit_event_type == 'downgrade':
             rating_change = (df_copy[issuer] > df_copy[issuer].shift(1))
-        if credit_event_type == 'Upgrade':
+        if credit_event_type == 'upgrade':
             rating_change = (df_copy[issuer] < df_copy[issuer].shift(1))
 
         # Count number of rating change
@@ -391,16 +354,20 @@ def df_nd_days_since_last_credit_event(df, credit_event_type):
 
     return df_copy
 
-df_issuer_rating_nb_days_last_downgrade_daily = df_nd_days_since_last_credit_event(df_issuer_rating_numeric_daily, credit_event_type= 'Downgrade')
-df_issuer_rating_nb_days_last_upgrade_daily = df_nd_days_since_last_credit_event(df_issuer_rating_numeric_daily, credit_event_type= 'Upgrade')
+df_issuer_rating_nb_days_last_downgrade_daily = df_nd_days_since_last_credit_event(df_issuer_rating_numeric_daily, credit_event_type= 'downgrade')
+df_issuer_rating_nb_days_last_upgrade_daily = df_nd_days_since_last_credit_event(df_issuer_rating_numeric_daily, credit_event_type= 'upgrade')
 
 
 # *** Convert daily data to monthly data ***
 
 df_issuer_rating_numeric_monthly = df_issuer_rating_numeric_daily.resample('ME').ffill()
 
-df_issuer_rating_downgrade_monthly = df_issuer_rating_downgrade_daily.resample('ME').ffill()
-df_issuer_rating_upgrade_monthly = df_issuer_rating_upgrade_daily.resample('ME').ffill()
+#df_issuer_rating_downgrade_monthly = df_issuer_rating_downgrade_daily.resample('ME').ffill()
+#df_issuer_rating_upgrade_monthly = df_issuer_rating_upgrade_daily.resample('ME').ffill()
+
+df_issuer_rating_downgrade_monthly = df_issuer_rating_downgrade_daily.resample('ME').max() # max per column within month
+df_issuer_rating_upgrade_monthly = df_issuer_rating_upgrade_daily.resample('ME').max() # max per column within month
+
 
 # Create a df with the nb of months since last rating change
 def df_nb_months_since_last_rating_change(df):
@@ -454,13 +421,16 @@ def df_nb_months_until_next_rating_change(df):
                     count += 1
                     col.iloc[i] = count
 
+    df_issuer_rating_nb_months_next_change.iloc[0, :] = -999999
+
     return df_issuer_rating_nb_months_next_change
 
 df_issuer_rating_nb_months_next_downgrade_monthly = df_nb_months_until_next_rating_change(df_issuer_rating_nb_months_last_downgrade_monthly)
 df_issuer_rating_nb_months_next_upgrade_monthly = df_nb_months_until_next_rating_change(df_issuer_rating_nb_months_last_upgrade_monthly)
 
-# Create a df to identify the different credit events (create an id for each credit event)
 
+# Create a df to identify the different credit events (create an id for each credit event)
+'''
 def df_credit_event_id(df):
     # Replace all values with -999999 except where values are between 1 and 12
     df_issuer_credit_event_id = df.where((df >= 1) & (df <= 12), -999999)
@@ -480,10 +450,30 @@ def df_credit_event_id(df):
                 col.iloc[i] = id
 
     return df_issuer_credit_event_id
+'''
+def df_credit_event_id_1(df):
+    # Replace all values with -999999 except where values are  0
+    df_issuer_credit_event_id = df.where((df >= 0) & (df <= 0), -999999)
+    id = 0
 
-#df_issuer_credit_event_id_monthly = df_credit_event_id(df_issuer_rating_nb_months_next_change_monthly)
-df_issuer_downgrade_id_monthly = df_credit_event_id(df_issuer_rating_nb_months_next_downgrade_monthly)
-df_issuer_upgrade_id_monthly = df_credit_event_id(df_issuer_rating_nb_months_next_upgrade_monthly)
+    for issuer in tqdm(df_issuer_credit_event_id.iloc[:, :].columns, desc='Creation credit events id df'):
+
+        #id = 0
+        col = df_issuer_credit_event_id[issuer]
+        # Work backwards through the column
+        for i in reversed(range(len(col))):
+
+            if col.iloc[i] == 0:
+                id += 1
+                col.iloc[i] = id
+            elif (col.iloc[i] > 0) & (col.iloc[i] <= 0):
+                col.iloc[i] = id
+
+    return df_issuer_credit_event_id
+
+#df_issuer_credit_event_id_monthly = df_credit_event_id_1(df_issuer_rating_nb_months_next_change_monthly)
+df_issuer_downgrade_id_monthly = df_credit_event_id_1(df_issuer_rating_nb_months_next_downgrade_monthly)
+df_issuer_upgrade_id_monthly = df_credit_event_id_1(df_issuer_rating_nb_months_next_upgrade_monthly)
 
 
 
@@ -508,7 +498,7 @@ df_mkt_cap_monthly = df_mkt_cap_daily.resample('ME').ffill()
 # *** Volatility measurement ***
 
 # Get the company share price
-df_share_price_daily = dic_issuer_market_daily['SHARE_PRICE']
+#df_share_price_daily = dic_issuer_market_daily['SHARE_PRICE']
 # Get the equity simple total return (not log return)
 df_equity_tot_return_daily = dic_issuer_market_daily['TOT_RETURN']
 
@@ -524,8 +514,9 @@ df_historical_volatility_daily_monthly = df_historical_volatility_daily.resample
 # TODO: Compute log return
 
 def garch_volatility(df_returns):
-    # Create a new DataFrame with the same index and columns, filled with nan
+    # Create new DataFrames with the same index and columns, filled with nan
     df_conditional_volatility_t_1_daily = pd.DataFrame(np.nan, index=df_returns.index, columns=df_returns.columns)
+    df_conditional_mean_t_1_daily = pd.DataFrame(np.nan, index=df_returns.index, columns=df_returns.columns)
 
     for issuer in df_returns:
         print(issuer)
@@ -545,17 +536,25 @@ def garch_volatility(df_returns):
             if res.convergence_flag == 0:
                 # Get the 1 period ahead conditional volatility (annualised)
                 conditional_volatility_t_1_daily = res.conditional_volatility.shift(-1) / 100 * np.sqrt(252)
+                # Get the 1 period ahead conditional mean (annualised)
+                conditional_mean_t_1_daily = (returns - res.resid).shift(-1) / 100 * 252
 
                 df_conditional_volatility_t_1_daily[issuer] = conditional_volatility_t_1_daily
+                df_conditional_mean_t_1_daily[issuer] = conditional_mean_t_1_daily
 
     # Take a rolling average of the conditional volatility to remove the noise
     df_conditional_volatility_t_1_daily = df_conditional_volatility_t_1_daily.rolling(window=90).mean()
     # Resample by month and take the last available value within the month
     df_conditional_volatility_t_1_monthly = df_conditional_volatility_t_1_daily.resample('ME').ffill()
 
-    return df_conditional_volatility_t_1_daily, df_conditional_volatility_t_1_monthly
+    # Take a rolling average of the conditional mean to remove the noise
+    df_conditional_mean_t_1_daily = df_conditional_mean_t_1_daily.rolling(window=90).mean()
+    # Resample by month and take the last available value within the month
+    df_conditional_mean_t_1_monthly = df_conditional_mean_t_1_daily.resample('ME').ffill()
 
-df_garch_conditional_volatility_t_1_daily, df_garch_conditional_volatility_t_1_monthly = garch_volatility(df_equity_tot_return_daily)
+    return df_conditional_volatility_t_1_daily, df_conditional_volatility_t_1_monthly, df_conditional_mean_t_1_daily, df_conditional_mean_t_1_monthly
+
+df_garch_conditional_volatility_t_1_daily, df_garch_conditional_volatility_t_1_monthly, df_AR_conditional_mean_t_1_daily, df_AR_conditional_mean_t_1_monthly = garch_volatility(df_equity_tot_return_daily)
 
 '''
 plt.plot(df_garch_conditional_volatility_t_1_daily['AAL US Equity'])
@@ -565,33 +564,35 @@ plt.show()
 
 # Volatility measurement method choice
 df_equity_return_vol_monthly = df_garch_conditional_volatility_t_1_monthly
-
+# Mean measurement method choice
+df_equity_return_mean_monthly = df_AR_conditional_mean_t_1_monthly
 
 # *** Risk free rate ***
 
 # 3m US treasury bill rate (annualised)
-s_3m_us_treasury_bill_rate_daily = dic_market_data_daily['RATES']['GB3 Govt'] / 100
+s_3m_us_treasury_bill_rate_daily = (dic_market_data_daily['RATES']['GB3 Govt'] / 100).round(3)
 # Resample by month and take the last available value within the month
 s_3m_us_treasury_bill_rate_monthly = s_3m_us_treasury_bill_rate_daily.resample('ME').ffill()
 
 # Get a constant risk-free rate
-treasury_bill_rate_daily_constant = 0.02
+# treasury_bill_rate_daily_constant = 0.02
 # Replace all the values in the series with the constant
-s_3m_us_treasury_bill_rate_const_daily = s_3m_us_treasury_bill_rate_daily.apply(lambda x: treasury_bill_rate_daily_constant)
-s_3m_us_treasury_bill_rate_const_monthly = s_3m_us_treasury_bill_rate_const_daily.resample('ME').ffill()
+# s_3m_us_treasury_bill_rate_const_daily = s_3m_us_treasury_bill_rate_daily.apply(lambda x: treasury_bill_rate_daily_constant)
+# s_3m_us_treasury_bill_rate_const_monthly = s_3m_us_treasury_bill_rate_const_daily.resample('ME').ffill()
 
 
 # *** Select data between a date range ***
 
 # Define the date range
-start_date = '2010-12-31'
+start_date = '2010-05-31'
 end_date = '2023-12-31'
 
 df_kmv_debt_monthly = df_kmv_debt_monthly.loc[start_date:end_date]
 df_mkt_cap_monthly = df_mkt_cap_monthly.loc[start_date:end_date]
 df_equity_return_vol_monthly = df_equity_return_vol_monthly.loc[start_date:end_date]
+df_equity_return_mean_monthly = df_equity_return_mean_monthly.loc[start_date:end_date]
 s_3m_us_treasury_bill_rate_monthly = s_3m_us_treasury_bill_rate_monthly.loc[start_date:end_date]
-s_3m_us_treasury_bill_rate_const_monthly = s_3m_us_treasury_bill_rate_const_monthly.loc[start_date:end_date]
+s_3m_us_treasury_bill_rate_monthly = s_3m_us_treasury_bill_rate_monthly.loc[start_date:end_date]
 
 # *** DD computation ***
 
@@ -603,22 +604,15 @@ def d2(V, K, r, g, sV, T, t):
     d2 = d1(V, K, r, g, sV, T, t) - sV*np.sqrt(T-t)
     return d2
 
-'''
-d1(V=100,K=50,r=0.05,g=0,sV=0.1,T=1,t=0)
-d2(V=100,K=50,r=0.05,g=0,sV=0.1,T=1,t=0)
-'''
 
-# Estimation of Vt and sV - Method 1: Fixing Vt
-
-
-# Estimation of Vt and sV - Method 2: Implied Vt and sV from Merton Model
+# Estimation of Vt and sV - Method: Implied Vt and sV from Merton Model
 def get_merton_implied_V_sV(E, K, r, g, sE, T, t):
 
     def merton_V_sV_equations(vars):
         V, sV = vars
         eq1 = np.exp(-r*(T-t)) * (V * np.exp((r-g) * (T-t)) * stats.norm.cdf(d1(V=V, K=K, r=r, g=g, sV=sV, T=T, t=t))
                                  - K * stats.norm.cdf(d2(V=V, K=K, r=r, g=g, sV=sV, T=T, t=t))) - E
-        eq2 = sE * E - sV * V * stats.norm.cdf(d1(V=V, K=K, r=r, g=g, sV=sV, T=T, t=t))
+        eq2 = sE * E - sV * V * np.exp(-g * (T-t)) * stats.norm.cdf(d1(V=V, K=K, r=r, g=g, sV=sV, T=T, t=t))
         return [eq1, eq2]
 
     x0 = np.array([E+K, (E / (E+K)) * sE])
@@ -627,28 +621,6 @@ def get_merton_implied_V_sV(E, K, r, g, sE, T, t):
 
     return solution
 
-'''
-E = 20
-K = 99.46
-r = 0.1
-g = 0
-sE = 0.4
-T = 1
-t = 0
-
-E = 12540467717.28516
-K = 1357000000.00000
-r = 0.10902
-g = 0
-sE = 0.34231
-T = 1
-t = 0
-
-solution = get_merton_implied_V_sV(E,K,r,g,sE,T,t)
-print(solution)
-print(solution.x)
-print(solution.success)
-'''
 
 def get_df_V_sV(df_E, df_K, df_sE, s_r, g, T, t):
     df_V_output = pd.DataFrame(np.nan, index=df_E.index, columns=df_E.columns)
@@ -676,9 +648,21 @@ def get_df_V_sV(df_E, df_K, df_sE, s_r, g, T, t):
 df_ev_monthly, df_ev_vol_monthly = get_df_V_sV(df_E=df_mkt_cap_monthly,
                                                df_K=df_kmv_debt_monthly,
                                                df_sE=df_equity_return_vol_monthly,
-                                               s_r=s_3m_us_treasury_bill_rate_const_monthly, g=0, T=1, t=0)
+                                               s_r=s_3m_us_treasury_bill_rate_monthly, g=0, T=1, t=0)
 
-def df_DD(df_V, df_K, df_sV, s_r, g, T, t):
+def df_YTM(df_VA, df_VE, df_D, T, t):
+    df_VD = df_VA - df_VE
+    df_YTM = -(1/(T-t)) * np.log(df_VD / df_D)
+    return df_YTM, df_VD
+
+df_YTM, df_VD = df_YTM(df_VA=df_ev_monthly, df_VE=df_mkt_cap_monthly, df_D=df_kmv_debt_monthly, T=1, t=0)
+def df_WACC(df_VA, df_VE, df_re, df_VD, df_YTM):
+    df_WACC = df_re * (df_VE / df_VA) + df_YTM * (df_VD / df_VA)
+    return df_WACC
+
+df_ra = df_WACC(df_VA=df_ev_monthly, df_VE=df_mkt_cap_monthly, df_re=df_equity_return_mean_monthly, df_VD=df_VD, df_YTM=df_YTM)
+
+def df_DD(df_V, df_K, df_sV, df_ra, g, T, t):
     df_DD_output = pd.DataFrame(np.nan, index=df_V.index, columns=df_V.columns)
 
     for c in tqdm(df_V.columns, desc='DD Computation'):
@@ -686,8 +670,8 @@ def df_DD(df_V, df_K, df_sV, s_r, g, T, t):
             V = df_V.loc[i, c]
             K = df_K.loc[i, c]
             sV = df_sV.loc[i, c]
-            r = s_r.loc[i]
-            DD = d1(V, K, r, g, sV, T, t)
+            ra = df_ra.loc[i, c]
+            DD = (np.log(V/K) + ((ra - g) - (sV**2 / 2))*(T - t)) / (sV*np.sqrt(T-t))
 
             df_DD_output.loc[i, c] = DD
 
@@ -696,7 +680,7 @@ def df_DD(df_V, df_K, df_sV, s_r, g, T, t):
 df_DD_monthly = df_DD(df_V=df_ev_monthly,
                       df_K=df_kmv_debt_monthly,
                       df_sV=df_ev_vol_monthly,
-                      s_r=s_3m_us_treasury_bill_rate_const_monthly, g=0, T=1, t=0)
+                      df_ra=df_ra, g=0, T=1, t=0)
 
 
 # %%
@@ -704,25 +688,43 @@ df_DD_monthly = df_DD(df_V=df_ev_monthly,
 # *** Section: Variables definition                      ***
 # **********************************************************
 
+# Select accounting data between a date range - match the same range as df_ev_monthly
+def dic_define_date_range(dic, start, end):
+    dic_copy = copy.deepcopy(dic)
+    for i in dic_copy:
+        dic_copy[i] = dic_copy[i].loc[start:end]
+    return dic_copy
+
+start_date = df_ev_monthly.index.min()
+end_date = df_ev_monthly.index.max()
+
+dic_issuer_fundamental_monthly = dic_define_date_range(dic_issuer_fundamental_monthly, start_date, end_date)
+
 
 # *** Firm specific variables ***
 
-# Z-score variables
-df_wc_to_ta_monthly = dic_issuer_fundamental_monthly['WORK_CAP'] / dic_issuer_fundamental_monthly['TOT_ASSET']
-df_re_to_ta_monthly = dic_issuer_fundamental_monthly['RET_EARN'] / dic_issuer_fundamental_monthly['TOT_ASSET']
-df_ebit_to_ta_monthly = dic_issuer_fundamental_monthly['EBIT'] / dic_issuer_fundamental_monthly['TOT_ASSET']
-#df_me_to_td_monthly = df_mkt_cap_monthly / ((dic_issuer_fundamental_monthly['LT_DEBT'] + dic_issuer_fundamental_monthly['ST_DEBT']).replace(0, np.nan))
-df_me_to_td_monthly = df_mkt_cap_monthly / (dic_issuer_fundamental_monthly['TOT_ASSET'] - dic_issuer_fundamental_monthly['BOOK_EQUITY'])
-df_sales_to_ta_monthly = dic_issuer_fundamental_monthly['SALES'] / dic_issuer_fundamental_monthly['TOT_ASSET']
+# Accounting variables
+df_ebit_to_ta_monthly = (dic_issuer_fundamental_monthly['EBIT'] / dic_issuer_fundamental_monthly['TOT_ASSET'])*100
+df_td_to_ta_monthly = ((dic_issuer_fundamental_monthly['LT_DEBT'] + dic_issuer_fundamental_monthly['ST_DEBT']) / dic_issuer_fundamental_monthly['TOT_ASSET'])*100
+#df_cash_to_ta_monthly = (dic_issuer_fundamental_monthly['CASH'] / dic_issuer_fundamental_monthly['TOT_ASSET'])*100
+df_iexp_to_ta_monthly = (dic_issuer_fundamental_monthly['INTEREST_EXP'] / dic_issuer_fundamental_monthly['TOT_ASSET'])*100
 
-# Duan (2012)
-df_cash_to_ta_monthly = dic_issuer_fundamental_monthly['CASH'] / dic_issuer_fundamental_monthly['TOT_ASSET']
-df_ev_to_ta_monthly = (df_mkt_cap_monthly + dic_issuer_fundamental_monthly['LT_DEBT'] + dic_issuer_fundamental_monthly['ST_DEBT']) / dic_issuer_fundamental_monthly['TOT_ASSET']
-df_size_monthly = np.log(df_mkt_cap_monthly)
+# Market variables
+df_DD_monthly = df_DD_monthly
+df_M_to_B_monthly = df_ev_monthly / dic_issuer_fundamental_monthly['TOT_ASSET']
 
-# Other credit metrics
-df_coverage_monthly = dic_issuer_fundamental_monthly['EBIT'] / dic_issuer_fundamental_monthly['INTEREST_EXP']
-df_net_leverage_monthly = (dic_issuer_fundamental_monthly['LT_DEBT'] + dic_issuer_fundamental_monthly['ST_DEBT'] - dic_issuer_fundamental_monthly['CASH']) / dic_issuer_fundamental_monthly['EBITDA']
+#
+#df_wc_to_ta_monthly = dic_issuer_fundamental_monthly['WORK_CAP'] / dic_issuer_fundamental_monthly['TOT_ASSET']
+#df_re_to_ta_monthly = dic_issuer_fundamental_monthly['RET_EARN'] / dic_issuer_fundamental_monthly['TOT_ASSET']
+#df_me_to_td_monthly = df_mkt_cap_monthly / (dic_issuer_fundamental_monthly['TOT_ASSET'] - dic_issuer_fundamental_monthly['BOOK_EQUITY'])
+#df_sales_to_ta_monthly = dic_issuer_fundamental_monthly['SALES'] / dic_issuer_fundamental_monthly['TOT_ASSET']
+#
+#df_cash_to_ta_monthly = dic_issuer_fundamental_monthly['CASH'] / dic_issuer_fundamental_monthly['TOT_ASSET']
+#df_ev_to_ta_monthly = (df_mkt_cap_monthly + dic_issuer_fundamental_monthly['LT_DEBT'] + dic_issuer_fundamental_monthly['ST_DEBT']) / dic_issuer_fundamental_monthly['TOT_ASSET']
+#df_size_monthly = np.log(df_mkt_cap_monthly)
+#
+#df_coverage_monthly = dic_issuer_fundamental_monthly['EBIT'] / dic_issuer_fundamental_monthly['INTEREST_EXP']
+#df_net_leverage_monthly = (dic_issuer_fundamental_monthly['LT_DEBT'] + dic_issuer_fundamental_monthly['ST_DEBT'] - dic_issuer_fundamental_monthly['CASH']) / dic_issuer_fundamental_monthly['EBITDA']
 
 
 # *** Common variables ***
@@ -730,7 +732,7 @@ s_spx_level_daily = dic_market_data_daily['SPX']['px_last']
 s_spx_level_monthly = s_spx_level_daily.resample('ME').ffill()
 s_spx_1y_trailing_return_monthly = s_spx_level_monthly.pct_change(periods=12)
 
-s_3m_us_treasury_bill_rate_monthly = s_3m_us_treasury_bill_rate_monthly
+s_3m_us_treasury_bill_rate_monthly = s_3m_us_treasury_bill_rate_monthly*100
 
 
 # *** Add all variables in a dictionary ***
@@ -741,8 +743,8 @@ dic_ind_variables_firm_monthly = {}
 dic_ind_variables_common_monthly = {}
 
 # Dependent variables
-dic_dep_variables_firm_monthly['next_12m_downgrade'] = df_issuer_rating_downgrade_monthly
-dic_dep_variables_firm_monthly['next_12m_upgrade'] = df_issuer_rating_upgrade_monthly
+dic_dep_variables_firm_monthly['downgrade-dummy'] = df_issuer_rating_downgrade_monthly
+dic_dep_variables_firm_monthly['upgrade-dummy'] = df_issuer_rating_upgrade_monthly
 
 #dic_dep_variables_firm_monthly['credit_event_id'] = df_issuer_credit_event_id_monthly
 #dic_dep_variables_firm_monthly['time_until_next_change'] = df_issuer_rating_nb_months_next_change_monthly
@@ -750,53 +752,42 @@ dic_dep_variables_firm_monthly['time_until_next_downgrade'] = df_issuer_rating_n
 dic_dep_variables_firm_monthly['time_until_next_upgrade'] = df_issuer_rating_nb_months_next_upgrade_monthly
 dic_dep_variables_firm_monthly['downgrade_id'] = df_issuer_downgrade_id_monthly
 dic_dep_variables_firm_monthly['upgrade_id'] = df_issuer_upgrade_id_monthly
-dic_dep_variables_firm_monthly['rating_cat_id'] = df_issuer_rating_numeric_monthly
+dic_dep_variables_firm_monthly['Rating-Category'] = df_issuer_rating_numeric_monthly
 
 # Independent variables - Firm specific variables
-dic_ind_variables_firm_monthly['DD'] = df_DD_monthly
+dic_ind_variables_firm_monthly['EBIT/TA'] = df_ebit_to_ta_monthly.shift(freq='12ME')
+dic_ind_variables_firm_monthly['dEBIT/TA'] = df_ebit_to_ta_monthly - df_ebit_to_ta_monthly.shift(freq='12ME')
+dic_ind_variables_firm_monthly['TD/TA'] = df_td_to_ta_monthly.shift(freq='12ME')
+dic_ind_variables_firm_monthly['dTD/TA'] = df_td_to_ta_monthly - df_td_to_ta_monthly.shift(freq='12ME')
+dic_ind_variables_firm_monthly['IEXP/TA'] = df_iexp_to_ta_monthly.shift(freq='12ME')
+dic_ind_variables_firm_monthly['dIEXP/TA'] = (df_iexp_to_ta_monthly - df_iexp_to_ta_monthly.shift(freq='12ME'))
 
-dic_ind_variables_firm_monthly['WC/TA'] = df_wc_to_ta_monthly
-dic_ind_variables_firm_monthly['RE/TA'] = df_re_to_ta_monthly
-dic_ind_variables_firm_monthly['EBIT/TA'] = df_ebit_to_ta_monthly
-dic_ind_variables_firm_monthly['ME/TD'] = df_me_to_td_monthly
-dic_ind_variables_firm_monthly['SALES/TA'] = df_sales_to_ta_monthly
-
-#dic_ind_variables_firm_monthly['EV/TA'] = df_ev_to_ta_monthly
-dic_ind_variables_firm_monthly['CASH/TA'] = df_cash_to_ta_monthly
-dic_ind_variables_firm_monthly['SIZE'] = df_size_monthly
-
-#dic_ind_variables_firm_monthly['coverage'] = df_coverage_monthly
-#dic_ind_variables_firm_monthly['net_leverage'] = df_net_leverage_monthly
+dic_ind_variables_firm_monthly['DD'] = df_DD_monthly.shift(freq='12ME')
+dic_ind_variables_firm_monthly['dDD'] = df_DD_monthly - df_DD_monthly.shift(freq='12ME')
 
 # Independent variables - Common variables
-dic_ind_variables_common_monthly['spx_1y_trailing_return'] = s_spx_1y_trailing_return_monthly
-dic_ind_variables_common_monthly['3m_us_treasury_bill_rate'] = s_3m_us_treasury_bill_rate_monthly
+dic_ind_variables_common_monthly['T-Bill-rate'] = s_3m_us_treasury_bill_rate_monthly
+# dic_ind_variables_common_monthly['SPX-return'] = s_spx_1y_trailing_return_monthly
 
 # Combine the 2 dictionary in one
 dic_variables_monthly['dep_var_firm'] = dic_dep_variables_firm_monthly
 dic_variables_monthly['ind_var_firm'] = dic_ind_variables_firm_monthly
 dic_variables_monthly['ind_var_common'] = dic_ind_variables_common_monthly
 
-# Select data between a date range
-def dic_define_date_range(dic, start, end):
-    dic_copy = copy.deepcopy(dic)
-    for i in dic_copy:
-        dic_copy[i] = dic_copy[i].loc[start:end]
-    return dic_copy
 
+# *** Select data between a date range for the all data ***
 def dic_parent_define_date_range(dic, start, end):
     dic_copy = copy.deepcopy(dic)
     for i in dic_copy:
         dic_copy[i] = dic_define_date_range(dic_copy[i], start, end)
     return dic_copy
 
-
-start_date = '2010-12-31'
+start_date = '2010-05-31'
 end_date = '2023-12-31'
 
 dic_variables_monthly = dic_parent_define_date_range(dic_variables_monthly, start_date, end_date)
 
-
+'''
 # *** Compute trend for firm specific variables: difference between current value and 12 months ago value ***
 
 def dic_ind_var_firm_trend(dic_variables, df_lag):
@@ -842,6 +833,7 @@ def dic_ind_var_firm_level(dic_variables, lag):
     return dic_variables
 
 dic_variables_monthly = dic_ind_var_firm_level(dic_variables_monthly, lag=-12)
+'''
 
 '''
 zzz = dic_variables_monthly['ind_var_firm']['DD']
@@ -849,10 +841,25 @@ yyy = dic_variables_monthly['ind_var_firm']['DD'].shift(-12)
 '''
 
 # Date filtering
-start_date = '2011-12-31'
-end_date = '2022-12-31'
+#start_date = '2011-12-31'
+#end_date = '2023-12-31'
 
-dic_variables_monthly = dic_parent_define_date_range(dic_variables_monthly, start_date, end_date)
+#dic_variables_monthly = dic_parent_define_date_range(dic_variables_monthly, start_date, end_date)
+
+# *** Lag all the dependent variables by one month ***
+def lag_dependent_variables(dic):
+    dic_copy = copy.deepcopy(dic)
+    data_type = ['ind_var_firm', 'ind_var_common']
+
+    for i in data_type:
+        for variable, df in dic_copy[i].items():
+            dic_copy[i][variable] = df.shift(1)
+    return dic_copy
+
+dic_variables_monthly_lag = lag_dependent_variables(dic_variables_monthly)
+
+# *** Lag the rating category by one month ***
+dic_variables_monthly_lag['dep_var_firm']['Rating-Category'] = dic_variables_monthly_lag['dep_var_firm']['Rating-Category'].shift(1)
 
 
 # *** Combine all data in a dataframe ***
@@ -860,7 +867,7 @@ dic_variables_monthly = dic_parent_define_date_range(dic_variables_monthly, star
 def df_combined_all_data(dic):
     # firm variables
     ls_output = []
-    data_type = ['dep_var_firm', 'ind_var_firm', 'ind_var_firm_trend']
+    data_type = ['dep_var_firm', 'ind_var_firm']
     for i in data_type:
         dic_tpm = dic[i]
 
@@ -907,13 +914,20 @@ def df_combined_all_data(dic):
 
     return df_output
 
-df_data = df_combined_all_data(dic_variables_monthly)
+df_data = df_combined_all_data(dic_variables_monthly_lag)
 
 # Drop all rows that contain any NaN values
 df_data = df_data.dropna()
 
+# Map the numeric rating categories to category names
+category_map = {1: 'IGH', 2: 'IGL', 3: 'HY'}
+df_data['Rating-Category'] = df_data['Rating-Category'].map(category_map)
+
+# Redefine column position
+df_data.insert(df_data.columns.get_loc('Rating-Category') + 1, 'T-Bill-rate', df_data.pop('T-Bill-rate'))
+
 # Save data (uncomment)
-with open(Path.joinpath(paths.get('data'), 'df_data.pkl'), 'wb') as file:
+with open(paths['data'] / 'df_data.pkl', 'wb') as file:
      pickle.dump(df_data, file)
 
 
@@ -925,24 +939,24 @@ with open(Path.joinpath(paths.get('data'), 'df_data.pkl'), 'wb') as file:
 
 
 # Load data
-with open(Path.joinpath(paths.get('data'), 'df_data.pkl'), 'rb') as file:
+with open(paths['data'] / 'df_data.pkl', 'rb') as file:
     df_data = pickle.load(file)
 
 
 # *** Data visualisation ***
-
+'''
 # Check if the dependent variables are balanced
 print('Check if the dependent variables are balanced:')
 # Downgrade
-count_no_downgrade = len(df_data[df_data['next_12m_downgrade'] == 0])
-count_downgrade = len(df_data[df_data['next_12m_downgrade'] == 1])
+count_no_downgrade = len(df_data[df_data['downgrade-dummy'] == 0])
+count_downgrade = len(df_data[df_data['downgrade-dummy'] == 1])
 pct_of_no_downgrade = count_no_downgrade/(count_no_downgrade + count_downgrade)
 print('percentage of no downgrade:', pct_of_no_downgrade*100)
 pct_of_downgrade = count_downgrade/(count_no_downgrade + count_downgrade)
 print('percentage of downgrade:', pct_of_downgrade*100)
 # Upgrade
-count_no_upgrade = len(df_data[df_data['next_12m_upgrade'] == 0])
-count_upgrade = len(df_data[df_data['next_12m_upgrade'] == 1])
+count_no_upgrade = len(df_data[df_data['upgrade-dummy'] == 0])
+count_upgrade = len(df_data[df_data['upgrade-dummy'] == 1])
 pct_of_no_upgrade = count_no_upgrade/(count_no_upgrade + count_upgrade)
 print('percentage of no upgrade:', pct_of_no_upgrade*100)
 pct_of_upgrade = count_upgrade/(count_no_upgrade + count_upgrade)
@@ -952,7 +966,7 @@ print('percentage of upgrade:', pct_of_upgrade*100)
 sns.set(context='paper', style='ticks', palette='bright', font_scale=1.0)
 fig, ax = plt.subplots(figsize=(12, 8), dpi=300)
 ax.set_title('Proportion of Downgrade', size=28)
-sns.countplot(data=df_data, x='next_12m_downgrade', stat='proportion')
+sns.countplot(data=df_data, x='downgrade-dummy', stat='proportion')
 ax.tick_params(axis='both', labelsize=18)
 ax.set_xlabel('', size=20)
 ax.set_ylabel('Proportion', size=20)
@@ -966,7 +980,7 @@ plt.close()
 sns.set(context='paper', style='ticks', palette='bright', font_scale=1.0)
 fig, ax = plt.subplots(figsize=(12, 8), dpi=300)
 ax.set_title('Proportion of Upgrade', size=28)
-sns.countplot(data=df_data, x='next_12m_upgrade', stat='proportion')
+sns.countplot(data=df_data, x='upgrade-dummy', stat='proportion')
 ax.tick_params(axis='both', labelsize=18)
 ax.set_xlabel('', size=20)
 ax.set_ylabel('Proportion', size=20)
@@ -975,10 +989,10 @@ fig.tight_layout()
 plt.show()
 #fig.savefig(Path.joinpath(paths.get('output'), 'XXXXXXXXX'.png'))
 plt.close()
-
+'''
 # Plot the distribution of the different independent variables
-df_data_ind_variables = df_data.drop(['DATES', 'Issuer', 'next_12m_downgrade', 'next_12m_upgrade',
-                                      'downgrade_id', 'upgrade_id', 'rating_cat_id',
+df_data_ind_variables = df_data.drop(['DATES', 'Issuer', 'downgrade-dummy', 'upgrade-dummy',
+                                      'downgrade_id', 'upgrade_id', 'Rating-Category',
                                       'time_until_next_downgrade', 'time_until_next_upgrade'], axis=1)
 for i in df_data_ind_variables:
     print(i)
@@ -992,129 +1006,122 @@ for i in df_data_ind_variables:
     ax.grid(axis='y', alpha=0.4)
     fig.tight_layout()
     plt.show()
-    #fig.savefig(Path.joinpath(paths.get('output'), 'XXXXXXXXX'.png'))
+    fig.savefig(paths['figures'] / 'distribution_of_{}.png'.format(i.replace('/', '-')))
     plt.close()
     time.sleep(0.5)
 
+# Count the number of  firms
+nb_firms = df_data['Issuer'].nunique()
+print(f"Number of firms: {nb_firms}")
+# Count the number of  observations
+nb_observations = len(df_data)
+print(f"Number of observations: {nb_observations}")
+# Number of downgrade
+total = df_data['downgrade-dummy'].sum()
+print(f"Number of credit rating downgrade: {total}")
+# Number of upgrade
+total = df_data['upgrade-dummy'].sum()
+print(f"Number of credit rating upgrade: {total}")
+
 
 # *** Summary statistics ***
-df_data_variables = df_data.drop(['DATES', 'Issuer',
-                                  'downgrade_id', 'upgrade_id', 'rating_cat_id',
-                                  'time_until_next_downgrade', 'time_until_next_upgrade'], axis=1)
-df_data_describe = df_data_variables.describe()
 
-#df_data_downgrade = df_data.drop(['DATES', 'Issuer', 'next_12m_upgrade'], axis=1)
-#df_data_upgrade = df_data.drop(['DATES', 'Issuer', 'next_12m_downgrade'], axis=1)
-df_downgrade_mean = df_data_variables.groupby('next_12m_downgrade').mean()
-df_upgrade_mean = df_data_variables.groupby('next_12m_upgrade').mean()
+# Independent Variables
+df_summary_stats_ind_variables_by_rating = (df_data[['Rating-Category', 'EBIT/TA', 'TD/TA', 'IEXP/TA', 'DD']]
+                                            .groupby('Rating-Category')
+                                            .agg(['count', 'mean', 'median', 'std', 'min', 'max']).T)
+df_summary_stats_ind_variables_by_rating = df_summary_stats_ind_variables_by_rating[['IGH', 'IGL', 'HY']]
+
+df_summary_stats_ind_variables = (df_data[['EBIT/TA', 'TD/TA', 'IEXP/TA', 'DD']]
+                                  .agg(['count', 'mean', 'median', 'std', 'min', 'max']).T)
+
+dic_summary_stats_ind_variables_by_rating = {col: df_summary_stats_ind_variables_by_rating[[col]].unstack(level=1).droplevel(0, axis=1) for col in df_summary_stats_ind_variables_by_rating.columns}
+
+dic_summary_stats_ind_variables_all = dic_summary_stats_ind_variables_by_rating
+dic_summary_stats_ind_variables_all['All'] = df_summary_stats_ind_variables
+
+df_summary_stats_ind_variables_all = pd.concat(dic_summary_stats_ind_variables_all, axis=1).stack(level=0, future_stack=True)
+df_summary_stats_ind_variables_all.index.set_names(['Variable', 'Rating Category'], inplace=True)
+
+df_summary_stats_ind_variables_all.to_latex(paths['tables'] / 'summary_stats_ind_variables_all.tex', float_format="%.2f")
+
+# Dependent Variables
+df_summary_stats_dep_variables_by_rating = (df_data[['upgrade-dummy', 'downgrade-dummy', 'Rating-Category']]
+                                            .groupby('Rating-Category')
+                                            .agg(['sum']).T)
+df_summary_stats_dep_variables_by_rating = df_summary_stats_dep_variables_by_rating[['IGH', 'IGL', 'HY']]
+df_summary_stats_dep_variables_by_rating = df_summary_stats_dep_variables_by_rating.reset_index().drop('level_1', axis=1).set_index('level_0')
+df_summary_stats_dep_variables_by_rating.index.name = None
+df_summary_stats_dep_variables_by_rating.columns.set_names('Rating Category before Transition', inplace=True)
+df_summary_stats_dep_variables_by_rating['Total'] = df_summary_stats_dep_variables_by_rating.sum(axis=1)
+df_summary_stats_dep_variables_by_rating = df_summary_stats_dep_variables_by_rating.rename(index={
+    'upgrade-dummy': 'Upgrade',
+    'downgrade-dummy': 'Downgrade'
+})
+
+df_summary_stats_dep_variables_by_rating.to_latex(paths['tables'] / 'summary_stats_dep_variables_all.tex', float_format="%.2f")
+
 
 # *** Box plot by rating category ***
 
-# DD
 sns.set(context='paper', style='ticks', palette='bright', font_scale=1.0)
-fig, ax = plt.subplots(figsize=(12, 8), dpi=300)
-ax.set_title('', size=28)
-sns.boxplot(data=df_data, x='rating_cat_id', y='DD', patch_artist=True)
-ax.tick_params(axis='both', labelsize=18)
-ax.set_xlabel('Rating Category', size=20)
-ax.set_ylabel('DD', size=20)
-ax.grid(axis='y', alpha=0.4)
-#plt.legend(fontsize=15)
-fig.tight_layout()
+
+l_ind_variables_firm = ['EBIT/TA', 'TD/TA', 'IEXP/TA', 'DD']
+order = ['IGH', 'IGL', 'HY']
+
+fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(12, 10), dpi=300, constrained_layout=True)
+
+for ax, var in zip(axes.flat, l_ind_variables_firm):
+    sns.boxplot(data=df_data, x='Rating-Category', y=var, hue='Rating-Category', order=order, patch_artist=True, ax=ax)
+    # Axis formatting
+    ax.set_xlabel('', fontsize=12)
+    ax.set_ylabel(var, fontsize=12)
+    ax.tick_params(axis='both', labelsize=11)
+    ax.grid(axis='y', alpha=0.4)
+
+fig.savefig(paths['figures'] / 'independent_variables_firm_boxplots_by_rating.png', bbox_inches='tight')
 plt.show()
-# fig.savefig(Path.joinpath(paths.get('output'), 'XXXXXXXXX'.png'))
 plt.close()
 
-sns.set(context='paper', style='ticks', palette='bright', font_scale=1.0)
-fig, ax = plt.subplots(figsize=(12, 8), dpi=300)
-ax.set_title('', size=28)
-sns.boxplot(data=df_data, x='rating_cat_id', y='DD', hue="next_12m_downgrade", patch_artist=True)
-ax.tick_params(axis='both', labelsize=18)
-ax.set_xlabel('Rating Category', size=20)
-ax.set_ylabel('DD', size=20)
-ax.grid(axis='y', alpha=0.4)
-#plt.legend(fontsize=15)
-fig.tight_layout()
+
+# *** Correlation matrix ***
+
+sns.set(context="paper", style="ticks", palette="bright", font_scale=1.0)
+
+l_ind_variables = ['T-Bill-rate', 'EBIT/TA', 'dEBIT/TA', 'TD/TA', 'dTD/TA', 'IEXP/TA', 'dIEXP/TA', 'DD', 'dDD']
+
+corr = df_data[l_ind_variables].corr(method="pearson")
+
+fig, ax = plt.subplots(figsize=(5.5, 4.5), dpi=300)
+
+# upper‑triangle mask (keeps plot uncluttered)
+# mask = np.triu(np.ones_like(corr, dtype=bool))
+
+sns.heatmap(corr, annot=True, fmt=".2f", cmap="coolwarm", vmin=-1, vmax=1, square=True, linewidths=.5,
+            cbar_kws={"label": "Pearson p"}, ax=ax)
+
+# ax.set_title("Correlation Matrix from firm-specific and macroeconomic variable", fontsize=12)
+plt.tight_layout()
+
+fig.savefig(paths["figures"] / "corr_matrix_vars_all.png", bbox_inches="tight")
 plt.show()
-# fig.savefig(Path.joinpath(paths.get('output'), 'XXXXXXXXX'.png'))
 plt.close()
-
-sns.set(context='paper', style='ticks', palette='bright', font_scale=1.0)
-fig, ax = plt.subplots(figsize=(12, 8), dpi=300)
-ax.set_title('', size=28)
-sns.boxplot(data=df_data, x='rating_cat_id', y='DD', hue="next_12m_upgrade", patch_artist=True)
-ax.tick_params(axis='both', labelsize=18)
-ax.set_xlabel('Rating Category', size=20)
-ax.set_ylabel('DD', size=20)
-ax.grid(axis='y', alpha=0.4)
-#plt.legend(fontsize=15)
-fig.tight_layout()
-plt.show()
-# fig.savefig(Path.joinpath(paths.get('output'), 'XXXXXXXXX'.png'))
-plt.close()
-
-# Altman z-score
-df_data['altman_z_score'] = 1.2*df_data['WC/TA'] + 1.4*df_data['RE/TA'] + 3.3*df_data['EBIT/TA'] + 0.6*df_data['ME/TD'] + 0.999*df_data['SALES/TA']
-
-sns.set(context='paper', style='ticks', palette='bright', font_scale=1.0)
-fig, ax = plt.subplots(figsize=(12, 8), dpi=300)
-ax.set_title('', size=28)
-sns.boxplot(data=df_data, x='rating_cat_id', y='altman_z_score', patch_artist=True)
-ax.tick_params(axis='both', labelsize=18)
-ax.set_xlabel('Rating Category', size=20)
-ax.set_ylabel('altman_z_score', size=20)
-ax.grid(axis='y', alpha=0.4)
-#plt.legend(fontsize=15)
-fig.tight_layout()
-plt.show()
-# fig.savefig(Path.joinpath(paths.get('output'), 'XXXXXXXXX'.png'))
-plt.close()
-
-sns.set(context='paper', style='ticks', palette='bright', font_scale=1.0)
-fig, ax = plt.subplots(figsize=(12, 8), dpi=300)
-ax.set_title('', size=28)
-sns.boxplot(data=df_data, x='rating_cat_id', y='altman_z_score', hue="next_12m_downgrade", patch_artist=True)
-ax.tick_params(axis='both', labelsize=18)
-ax.set_xlabel('Rating Category', size=20)
-ax.set_ylabel('altman_z_score', size=20)
-ax.grid(axis='y', alpha=0.4)
-#plt.legend(fontsize=15)
-fig.tight_layout()
-plt.show()
-# fig.savefig(Path.joinpath(paths.get('output'), 'XXXXXXXXX'.png'))
-plt.close()
-
-sns.set(context='paper', style='ticks', palette='bright', font_scale=1.0)
-fig, ax = plt.subplots(figsize=(12, 8), dpi=300)
-ax.set_title('', size=28)
-sns.boxplot(data=df_data, x='rating_cat_id', y='altman_z_score', hue="next_12m_upgrade")
-ax.tick_params(axis='both', labelsize=18)
-ax.set_xlabel('Rating Category', size=20)
-ax.set_ylabel('altman_z_score', size=20)
-ax.grid(axis='y', alpha=0.4)
-#plt.legend(fontsize=15)
-fig.tight_layout()
-plt.show()
-# fig.savefig(Path.joinpath(paths.get('output'), 'XXXXXXXXX'.png'))
-plt.close()
-
-df_data = df_data.drop('altman_z_score', axis=1)
 
 
 # %%
 # **********************************************************
 # *** Section: Preprocessing - Resampling: Over-sampling ***
 # **********************************************************
-
+'''
 # TODO: change text for upgrade for check data
 
 def resampling_data(dep_var, df_data, dep_var_to_remove):
 
-    # Drop all rows where 'rating_cat_id' equals max id (downgrade) or min id (upgrade)
-    if dep_var == 'next_12m_downgrade':
-        df_data = df_data[df_data['rating_cat_id'] != df_data['rating_cat_id'].max()]
-    if dep_var == 'next_12m_upgrade':
-        df_data = df_data[df_data['rating_cat_id'] != df_data['rating_cat_id'].min()]
+    # Drop all rows where 'Rating-Category' equals max id (downgrade) or min id (upgrade)
+    if dep_var == 'downgrade-dummy':
+        df_data = df_data[df_data['Rating-Category'] != df_data['Rating-Category'].max()]
+    if dep_var == 'upgrade-dummy':
+        df_data = df_data[df_data['Rating-Category'] != df_data['Rating-Category'].min()]
 
     df_data_dep_var = df_data.drop(['DATES', 'Issuer',
                                     'downgrade_id', 'upgrade_id',
@@ -1140,7 +1147,7 @@ def resampling_data(dep_var, df_data, dep_var_to_remove):
     df_data_dep_var_res = df_data_dep_var_res[cols]
 
     # Round rating category
-    df_data_dep_var_res['rating_cat_id'] = df_data_dep_var_res['rating_cat_id'].round()
+    df_data_dep_var_res['Rating-Category'] = df_data_dep_var_res['Rating-Category'].round()
 
     # ***
     # Scatter plot df_data_dep_var_res before and after resampling
@@ -1149,14 +1156,14 @@ def resampling_data(dep_var, df_data, dep_var_to_remove):
     fig, ax = plt.subplots(figsize=(12, 8), dpi=300)
     # ax.set_title('', size=28)
     ax.scatter(x=df_data_dep_var[df_data_dep_var[dep_var] == 0]['EBIT/TA_trend'],
-               y=df_data_dep_var[df_data_dep_var[dep_var] == 0]['DD_trend'],
+               y=df_data_dep_var[df_data_dep_var[dep_var] == 0]['dDD'],
                label='No {}'.format(dep_var))
     ax.scatter(x=df_data_dep_var[df_data_dep_var[dep_var] == 1]['EBIT/TA_trend'],
-               y=df_data_dep_var[df_data_dep_var[dep_var] == 1]['DD_trend'],
+               y=df_data_dep_var[df_data_dep_var[dep_var] == 1]['dDD'],
                label='{}'.format(dep_var))
     ax.tick_params(axis='both', labelsize=18)
     ax.set_xlabel('EBIT/TA_trend', size=20)
-    ax.set_ylabel('DD_trend', size=20)
+    ax.set_ylabel('dDD', size=20)
     # ax.grid(axis='y', alpha=0.4)
     plt.legend()
     fig.tight_layout()
@@ -1169,14 +1176,14 @@ def resampling_data(dep_var, df_data, dep_var_to_remove):
     fig, ax = plt.subplots(figsize=(12, 8), dpi=300)
     # ax.set_title('', size=28)
     ax.scatter(x=df_data_dep_var_res[df_data_dep_var_res[dep_var] == 0]['EBIT/TA_trend'],
-               y=df_data_dep_var_res[df_data_dep_var_res[dep_var] == 0]['DD_trend'],
+               y=df_data_dep_var_res[df_data_dep_var_res[dep_var] == 0]['dDD'],
                label='No {}'.format(dep_var))
     ax.scatter(x=df_data_dep_var_res[df_data_dep_var_res[dep_var] == 1]['EBIT/TA_trend'],
-               y=df_data_dep_var_res[df_data_dep_var_res[dep_var] == 1]['DD_trend'],
+               y=df_data_dep_var_res[df_data_dep_var_res[dep_var] == 1]['dDD'],
                label='{}'.format(dep_var))
     ax.tick_params(axis='both', labelsize=18)
     ax.set_xlabel('EBIT/TA_trend', size=20)
-    ax.set_ylabel('DD_trend', size=20)
+    ax.set_ylabel('dDD', size=20)
     # ax.grid(axis='y', alpha=0.4)
     plt.legend()
     fig.tight_layout()
@@ -1188,10 +1195,17 @@ def resampling_data(dep_var, df_data, dep_var_to_remove):
 
 
 # Downgrade
-df_data_downgrade, df_data_downgrade_res = resampling_data(dep_var='next_12m_downgrade', df_data=df_data, dep_var_to_remove='next_12m_upgrade')
+df_data_downgrade, df_data_downgrade_res = resampling_data(dep_var='downgrade-dummy', df_data=df_data, dep_var_to_remove='upgrade-dummy')
 
 # Upgrade
-df_data_upgrade, df_data_upgrade_res = resampling_data(dep_var='next_12m_upgrade', df_data=df_data, dep_var_to_remove='next_12m_downgrade')
+df_data_upgrade, df_data_upgrade_res = resampling_data(dep_var='upgrade-dummy', df_data=df_data, dep_var_to_remove='downgrade-dummy')
+'''
+
+# Make dummy variable take value 1 if rating change in the next 12m
+df_data_res = copy.deepcopy(df_data)
+df_data_res['downgrade-dummy'] = df_data_res['time_until_next_downgrade'].between(0, 11, inclusive='both').astype(int)
+df_data_res['upgrade-dummy'] = df_data_res['time_until_next_upgrade'].between(0, 11, inclusive='both').astype(int)
+
 
 
 # %%
@@ -1199,86 +1213,417 @@ df_data_upgrade, df_data_upgrade_res = resampling_data(dep_var='next_12m_upgrade
 # *** Section:  Logit regression Fit                     ***
 # **********************************************************
 
+# Creation of upgrade and downgrade only dataframe (real data)
+df_data_downgrade = df_data[df_data['Rating-Category'] != 'HY']
+df_data_upgrade = df_data[df_data['Rating-Category'] != 'IGH']
+
+# Creation of upgrade and downgrade only dataframe (resample data)
+df_data_downgrade_res = df_data_res[df_data_res['Rating-Category'] != 'HY']
+df_data_upgrade_res = df_data_res[df_data_res['Rating-Category'] != 'IGH']
 
 # Creation of data test dataframe (real data)
-df_data_test_downgrade = df_data[df_data['rating_cat_id'] != df_data['rating_cat_id'].max()]
-df_data_test_upgrade = df_data[df_data['rating_cat_id'] != df_data['rating_cat_id'].min()]
+# df_data_test_downgrade = df_data[df_data['Rating-Category'] != df_data['Rating-Category'].max()]
+# df_data_test_upgrade = df_data[df_data['Rating-Category'] != df_data['Rating-Category'].min()]
 
 # Addition of interaction effect (resample + real data)
 def addition_interaction(df, var_range):
     df_copy = copy.deepcopy(df)
 
-    # Creation of dummy variables, with rating == 2 as the reference
-    df_copy = pd.get_dummies(df_copy, columns=['rating_cat_id'], prefix='rating', dtype=int).drop(columns=['rating_2.0'])
+    # Creation of dummy variables, with rating == IGL as the reference
+    df_copy = pd.get_dummies(df_copy, columns=['Rating-Category'], prefix='D', prefix_sep='-', dtype=int).drop(columns=['D-IGL'])
     binary_var = df_copy.columns[-1]
     variables_for_interaction = df_copy.columns[var_range[0]:var_range[1]].tolist()
 
     # Create interaction terms and add them to the DataFrame
     for var in variables_for_interaction:
-        interaction_column_name = f'{var}:{binary_var}'
+        interaction_column_name = f'{var}*{binary_var}'
         df_copy[interaction_column_name] = df_copy[var] * df_copy[binary_var]
     return df_copy
 
+# Real data
+# Data not resampled
+df_data_downgrade_res = addition_interaction(df=df_data_downgrade_res, var_range = [8,len(df_data_downgrade_res.columns)-1])
+df_data_upgrade_res = addition_interaction(df=df_data_upgrade_res, var_range = [8,len(df_data_downgrade_res.columns)-1])
+
 # Resampled data
-df_data_downgrade_res = addition_interaction(df=df_data_downgrade_res, var_range = [1,1+8])
-df_data_upgrade_res = addition_interaction(df=df_data_upgrade_res, var_range = [1,1+8])
+# df_data_downgrade_res = addition_interaction(df=df_data_downgrade_res, var_range = [1,1+8])
+# df_data_upgrade_res = addition_interaction(df=df_data_upgrade_res, var_range = [1,1+8])
 
 # Real data
 # Data not resampled
-df_data_downgrade = addition_interaction(df=df_data_downgrade, var_range = [1,1+8])
-df_data_upgrade = addition_interaction(df=df_data_upgrade, var_range = [1,1+8])
+#df_data_downgrade = addition_interaction(df=df_data_downgrade, var_range = [1,1+8])
+#df_data_upgrade = addition_interaction(df=df_data_upgrade, var_range = [1,1+8])
 
 # Test data
-df_data_test_downgrade = addition_interaction(df=df_data_test_downgrade, var_range = [8,8+8])
-df_data_test_upgrade = addition_interaction(df=df_data_test_upgrade, var_range = [8,8+8])
+#df_data_test_downgrade = addition_interaction(df=df_data_test_downgrade, var_range = [8,8+8])
+#df_data_test_upgrade = addition_interaction(df=df_data_test_upgrade, var_range = [8,8+8])
+
+# Make_t_test_tables
+def t_test_tables_1(res, category_name, dummy_category, list_X_variables):
+
+    params = res.params
+    pnames = res.params.index
+    k_params = len(params)
+
+    dic_t_test_tables = {}
+
+    for i in category_name:
+        rows = []  # will store results row‑by‑row
+
+        for base in list_X_variables:  # list of X‑variables
+
+            if i == dummy_category:
+                # Name of the interaction term (whichever order appears in params)
+                int_name = f'{base}*D-{dummy_category}' if f'{base}*D-{dummy_category}' in pnames else f'D-{dummy_category}*{base}'
+
+                if int_name not in pnames:
+                    raise ValueError(f'Interaction term for {base} not found')
+
+                # ---------- build contrast vector c so that c'β = β_base + β_int -----
+                c = np.zeros(k_params)
+                c[pnames.get_loc(base)] = 1
+                c[pnames.get_loc(int_name)] = 1
+
+            else:  # base group
+                # ---------- build contrast vector c so that c'β = β_base -----
+                c = np.zeros(k_params)
+                c[pnames.get_loc(base)] = 1
+
+            # ---------- t test -------------------------------------------
+            test = res.t_test(c)  # uses same covariance as fit
+            est, se = test.effect.item(), test.sd.item()
+            z, pval = test.tvalue.item(), test.pvalue.item()
+            ci_low, ci_high = test.conf_int().flatten()
+
+            rows.append({
+                'Variable': base,
+                'Coef.': est,
+                'P > |z|': pval,
+            })
+
+        # tidy result table
+        comb_stats = pd.DataFrame(rows).set_index('Variable')
+        dic_t_test_tables[i] = comb_stats
+
+    return dic_t_test_tables
+
+def t_test_tables_2(res, category_name, dummy_category, list_X_common_variables,  list_X_firm_variables):
+
+    params = res.params
+    pnames = res.params.index
+    k_params = len(params)
+
+    dic_t_test_tables = {}
+
+    for i in category_name:
+        rows = []  # will store results row‑by‑row
+
+        for base in list_X_common_variables + list_X_firm_variables:  # list of X‑variables
+
+            if i == dummy_category:
+                # Name of the interaction term (whichever order appears in params)
+                int_name = f'{base}*D-{dummy_category}'
+
+                # ---------- build contrast vector c so that c'β = β_base + β_int -----
+                if base in list_X_common_variables:
+                    c = np.zeros(k_params)
+                    c[pnames.get_loc(base)] = 1
+                    c[pnames.get_loc(int_name)] = 1
+
+                if base in list_X_firm_variables:
+                    d_name = f'd{base}'
+                    d_name_int = f'd{int_name}'
+
+                    c = np.zeros(k_params)
+                    c[pnames.get_loc(base)] = 1
+                    c[pnames.get_loc(int_name)] = 1
+                    c[pnames.get_loc(d_name)] = 1
+                    c[pnames.get_loc(d_name_int)] = 1
+
+
+            else:  # base group
+                # ---------- build contrast vector c so that c'β = β_base -----
+                if base in list_X_common_variables:
+                    c = np.zeros(k_params)
+                    c[pnames.get_loc(base)] = 1
+
+                if base in list_X_firm_variables:
+                    d_name = f'd{base}'
+
+                    c = np.zeros(k_params)
+                    c[pnames.get_loc(base)] = 1
+                    c[pnames.get_loc(d_name)] = 1
+
+            # ---------- t test -------------------------------------------
+            test = res.t_test(c)  # uses same covariance as fit
+            est, se = test.effect.item(), test.sd.item()
+            z, pval = test.tvalue.item(), test.pvalue.item()
+            ci_low, ci_high = test.conf_int().flatten()
+
+            rows.append({
+                'Variable': base,
+                'Coef.': est,
+                'P > |z|': pval,
+            })
+
+        # tidy result table
+        comb_stats = pd.DataFrame(rows).set_index('Variable')
+        dic_t_test_tables[i] = comb_stats
+
+    return dic_t_test_tables
+
+
+def goodness_fit_table(res):
+    dic = {
+        "Observations": res.nobs,
+        "Pseudo R-squared": res.prsquared,
+        "AIC": res.aic,
+        "BIC": res.bic,
+        "Log Likelihood": res.llf
+    }
+    table_output = pd.DataFrame.from_dict(dic, orient='index')
+    return table_output
 
 
 # *** Downgrade ***
 
-# Fitting the logit regression (resample data)
-df_data_downgrade_res_X = df_data_downgrade_res.loc[:, df_data_downgrade_res.columns != 'next_12m_downgrade']
+dic_t_test_tables_downgrade = {}
+dic_goodness_fit_tables_downgrade = {}
+
+# *** Fitting the logit regression (resample data) - Accounting Data ***
+ind_variable_to_include = ['T-Bill-rate', 'EBIT/TA', 'dEBIT/TA', 'TD/TA', 'dTD/TA', 'IEXP/TA', 'dIEXP/TA',
+                           'D-IGH', 'T-Bill-rate*D-IGH', 'EBIT/TA*D-IGH', 'dEBIT/TA*D-IGH', 'TD/TA*D-IGH',
+                           'dTD/TA*D-IGH', 'IEXP/TA*D-IGH', 'dIEXP/TA*D-IGH']
+df_data_downgrade_res_X = df_data_downgrade_res[ind_variable_to_include]
 df_data_downgrade_res_X = sm.add_constant(df_data_downgrade_res_X)
-df_data_downgrade_res_y = df_data_downgrade_res['next_12m_downgrade']
+df_data_downgrade_res_y = df_data_downgrade_res['downgrade-dummy']
 
-logit_mod = sm.Logit(df_data_downgrade_res_y, df_data_downgrade_res_X)
-logit_res = logit_mod.fit(cov_type='HC3')
-print(logit_res.summary2())
-print(logit_res.summary())
+logit_res_downgrade_accounting = sm.Logit(df_data_downgrade_res_y, df_data_downgrade_res_X).fit(cov_type='HC0') # cov_type='HC0': White’s heteroskedasticity‑robust (“sandwich”) estimator
+sys.stdout = open(paths['tables'] / 'logit_res_downgrade_accounting_summary2.txt', 'w')
+print(logit_res_downgrade_accounting.summary2())
+sys.stdout = sys.__stdout__
 
+# T-Test
+dic_t_test_downgrade_accounting_1 = t_test_tables_1(res= logit_res_downgrade_accounting, category_name= ['IGL', 'IGH'], dummy_category='IGH',
+              list_X_variables=['T-Bill-rate', 'EBIT/TA', 'dEBIT/TA', 'TD/TA', 'dTD/TA', 'IEXP/TA', 'dIEXP/TA'])
+df_t_test_downgrade_accounting_1 = pd.concat(dic_t_test_downgrade_accounting_1, axis=1)
+
+dic_t_test_downgrade_accounting_2 = t_test_tables_2(res= logit_res_downgrade_accounting, category_name= ['IGL', 'IGH'], dummy_category='IGH',
+                                                  list_X_common_variables=['T-Bill-rate'],
+                                                  list_X_firm_variables=['EBIT/TA', 'TD/TA', 'IEXP/TA'])
+df_t_test_downgrade_accounting_2 = pd.concat(dic_t_test_downgrade_accounting_2, axis=1)
+dic_t_test_tables_downgrade['Accounting'] = df_t_test_downgrade_accounting_2
+
+# Goodness-of-fit table
+df_goodness_fit_downgrade_accounting = goodness_fit_table(res=logit_res_downgrade_accounting)
+dic_goodness_fit_tables_downgrade['Accounting'] = df_goodness_fit_downgrade_accounting
+
+
+# *** Fitting the logit regression (resample data) - Market Data ***
+ind_variable_to_include = ['T-Bill-rate', 'DD', 'dDD', 'D-IGH', 'T-Bill-rate*D-IGH', 'DD*D-IGH', 'dDD*D-IGH']
+df_data_downgrade_res_X = df_data_downgrade_res[ind_variable_to_include]
+df_data_downgrade_res_X = sm.add_constant(df_data_downgrade_res_X)
+df_data_downgrade_res_y = df_data_downgrade_res['downgrade-dummy']
+
+logit_res_downgrade_market = sm.Logit(df_data_downgrade_res_y, df_data_downgrade_res_X).fit(cov_type='HC0') # cov_type='HC0': White’s heteroskedasticity‑robust (“sandwich”) estimator
+sys.stdout = open(paths['tables'] / 'logit_res_downgrade_market_summary2.txt', 'w')
+print(logit_res_downgrade_market.summary2())
+sys.stdout = sys.__stdout__
+
+# T-Test
+dic_t_test_downgrade_market_1 = t_test_tables_1(res= logit_res_downgrade_market, category_name= ['IGL', 'IGH'], dummy_category='IGH',
+              list_X_variables=['T-Bill-rate', 'DD', 'dDD'])
+df_t_test_downgrade_market_1 = pd.concat(dic_t_test_downgrade_market_1, axis=1)
+
+dic_t_test_downgrade_market_2 = t_test_tables_2(res= logit_res_downgrade_market, category_name= ['IGL', 'IGH'], dummy_category='IGH',
+                                                  list_X_common_variables=['T-Bill-rate'],
+                                                  list_X_firm_variables=['DD'])
+df_t_test_downgrade_market_2 = pd.concat(dic_t_test_downgrade_market_2, axis=1)
+dic_t_test_tables_downgrade['Market'] = df_t_test_downgrade_market_2
+
+# Goodness-of-fit table
+df_goodness_fit_downgrade_market = goodness_fit_table(res=logit_res_downgrade_market)
+dic_goodness_fit_tables_downgrade['Market'] = df_goodness_fit_downgrade_market
+
+
+# *** Fitting the logit regression (resample data) - Accounting + Market Data ***
+ind_variable_to_include = ['T-Bill-rate', 'EBIT/TA', 'dEBIT/TA', 'TD/TA', 'dTD/TA', 'IEXP/TA', 'dIEXP/TA', 'DD', 'dDD',
+                           'D-IGH', 'T-Bill-rate*D-IGH', 'EBIT/TA*D-IGH', 'dEBIT/TA*D-IGH', 'TD/TA*D-IGH',
+                           'dTD/TA*D-IGH', 'IEXP/TA*D-IGH', 'dIEXP/TA*D-IGH', 'DD*D-IGH', 'dDD*D-IGH']
+df_data_downgrade_res_X = df_data_downgrade_res[ind_variable_to_include]
+df_data_downgrade_res_X = sm.add_constant(df_data_downgrade_res_X)
+df_data_downgrade_res_y = df_data_downgrade_res['downgrade-dummy']
+
+logit_res_downgrade_accounting_market = sm.Logit(df_data_downgrade_res_y, df_data_downgrade_res_X).fit(cov_type='HC0') # cov_type='HC0': White’s heteroskedasticity‑robust (“sandwich”) estimator
+sys.stdout = open(paths['tables'] / 'logit_res_downgrade_accounting_market_summary2.txt', 'w')
+print(logit_res_downgrade_accounting_market.summary2())
+sys.stdout = sys.__stdout__
+
+# T-Test
+dic_t_test_downgrade_accounting_market = t_test_tables_1(res= logit_res_downgrade_accounting_market, category_name= ['IGL', 'IGH'], dummy_category='IGH',
+              list_X_variables=['T-Bill-rate', 'EBIT/TA', 'dEBIT/TA', 'TD/TA', 'dTD/TA', 'IEXP/TA', 'dIEXP/TA', 'DD', 'dDD'])
+df_t_test_downgrade_accounting_market = pd.concat(dic_t_test_downgrade_accounting_market, axis=1)
+
+dic_t_test_downgrade_accounting_market_2 = t_test_tables_2(res= logit_res_downgrade_accounting_market, category_name= ['IGL', 'IGH'], dummy_category='IGH',
+                                                  list_X_common_variables=['T-Bill-rate'],
+                                                  list_X_firm_variables=['EBIT/TA', 'TD/TA', 'IEXP/TA', 'DD'])
+df_t_test_downgrade_accounting_market_2 = pd.concat(dic_t_test_downgrade_accounting_market_2, axis=1)
+dic_t_test_tables_downgrade['Accounting + Market'] = df_t_test_downgrade_accounting_market_2
+
+# Goodness-of-fit table
+df_goodness_fit_downgrade_accounting_market = goodness_fit_table(res=logit_res_downgrade_accounting_market)
+dic_goodness_fit_tables_downgrade['Accounting + Market'] = df_goodness_fit_downgrade_accounting_market
+
+
+# *** Export T-Test tables to .tex ***
+df_t_test_tables_downgrade = pd.concat(dic_t_test_tables_downgrade, axis=1).stack(level=1, future_stack=True).fillna('')
+df_t_test_tables_downgrade.to_latex(paths['tables'] / 'df_t_test_tables_downgrade.tex', float_format="%.4f")
+
+# *** Export model goodness-of-fit tables to .tex ***
+df_goodness_fit_tables_downgrade = pd.concat(dic_goodness_fit_tables_downgrade, axis=1)
+df_goodness_fit_tables_downgrade.columns = df_goodness_fit_tables_downgrade.columns.droplevel(1)
+df_goodness_fit_tables_downgrade.to_latex(paths['tables'] / 'df_goodness_fit_tables_downgrade.tex', float_format="%.4f")
+
+# *** Export regression summary table to .tex ***
+custom_names = ['Accounting', 'Market', 'Accounting + Market']
+stargazer = Stargazer([logit_res_downgrade_accounting, logit_res_downgrade_market, logit_res_downgrade_accounting_market])
+stargazer.custom_columns(custom_names, [1, 1, 1])
+with open(paths['tables'] / 'logit_res_downgrade_summary_table_all.tex', 'w') as f:
+    f.write(stargazer.render_latex())
+
+
+'''
+# result = logit_res.t_test('DD + DD*D-IGH = 0')
+# print(result)
 df_downgrade_params = pd.Series(logit_res.params)
 
 # Model estimated rating downgrade probability within next 12m (real data)
 #df_data_test = copy.deepcopy(df_data)
-#df_data_test_y = df_data_test['next_12m_downgrade']
+#df_data_test_y = df_data_test['downgrade-dummy']
 
-df_data_test_downgrade['y_index_downgrade_predict'] = (sm.add_constant(df_data_downgrade.loc[:, df_data_downgrade.columns != 'next_12m_downgrade']) * df_downgrade_params).sum(axis=1)
+df_data_test_downgrade['y_index_downgrade_predict'] = (sm.add_constant(df_data_downgrade.loc[:, df_data_downgrade.columns != 'downgrade-dummy']) * df_downgrade_params).sum(axis=1)
 df_data_test_downgrade['estimated_proba_downgrade_next_12m'] = 1 / (1 + np.exp(-df_data_test_downgrade['y_index_downgrade_predict']))
 
 # Marginal effects
-
+'''
 
 
 # *** Upgrade ***
 
-# Fitting the logit regression (resample data)
-df_data_upgrade_res_X = df_data_upgrade_res.loc[:, df_data_upgrade_res.columns != 'next_12m_upgrade']
+dic_t_test_tables_upgrade = {}
+dic_goodness_fit_tables_upgrade = {}
+
+# *** Fitting the logit regression (resample data) - Accounting Data ***
+ind_variable_to_include = ['T-Bill-rate', 'EBIT/TA', 'dEBIT/TA', 'TD/TA', 'dTD/TA', 'IEXP/TA', 'dIEXP/TA',
+                           'D-HY', 'T-Bill-rate*D-HY', 'EBIT/TA*D-HY', 'dEBIT/TA*D-HY', 'TD/TA*D-HY',
+                           'dTD/TA*D-HY', 'IEXP/TA*D-HY', 'dIEXP/TA*D-HY']
+df_data_upgrade_res_X = df_data_upgrade_res[ind_variable_to_include]
 df_data_upgrade_res_X = sm.add_constant(df_data_upgrade_res_X)
-df_data_upgrade_res_y = df_data_upgrade_res['next_12m_upgrade']
+df_data_upgrade_res_y = df_data_upgrade_res['upgrade-dummy']
 
-logit_mod = sm.Logit(df_data_upgrade_res_y, df_data_upgrade_res_X)
-logit_res = logit_mod.fit(cov_type='HC3')
-print(logit_res.summary2())
-print(logit_res.summary())
+logit_res_upgrade_accounting = sm.Logit(df_data_upgrade_res_y, df_data_upgrade_res_X).fit(cov_type='HC0') # cov_type='HC0': White’s heteroskedasticity‑robust (“sandwich”) estimator
+sys.stdout = open(paths['tables'] / 'logit_res_upgrade_accounting_summary2.txt', 'w')
+print(logit_res_upgrade_accounting.summary2())
+sys.stdout = sys.__stdout__
 
-df_upgrade_params = pd.Series(logit_res.params)
+# T-Test
+dic_t_test_upgrade_accounting_1 = t_test_tables_1(res= logit_res_upgrade_accounting, category_name= ['IGL', 'HY'], dummy_category='HY',
+              list_X_variables=['T-Bill-rate', 'EBIT/TA', 'TD/TA', 'IEXP/TA'])
+df_t_test_upgrade_accounting_1 = pd.concat(dic_t_test_upgrade_accounting_1, axis=1)
 
+dic_t_test_upgrade_accounting_2 = t_test_tables_2(res= logit_res_upgrade_accounting, category_name= ['IGL', 'HY'], dummy_category='HY',
+                                                  list_X_common_variables=['T-Bill-rate'],
+                                                  list_X_firm_variables=['EBIT/TA', 'TD/TA', 'IEXP/TA'])
+df_t_test_upgrade_accounting_2 = pd.concat(dic_t_test_upgrade_accounting_2, axis=1)
+dic_t_test_tables_upgrade['Accounting'] = df_t_test_upgrade_accounting_2
+
+# Goodness-of-fit table
+df_goodness_fit_upgrade_accounting = goodness_fit_table(res=logit_res_upgrade_accounting)
+dic_goodness_fit_tables_upgrade['Accounting'] = df_goodness_fit_upgrade_accounting
+
+
+# *** Fitting the logit regression (resample data) - Market Data ***
+ind_variable_to_include = ['T-Bill-rate', 'DD', 'dDD', 'D-HY', 'T-Bill-rate*D-HY', 'DD*D-HY', 'dDD*D-HY']
+df_data_upgrade_res_X = df_data_upgrade_res[ind_variable_to_include]
+df_data_upgrade_res_X = sm.add_constant(df_data_upgrade_res_X)
+df_data_upgrade_res_y = df_data_upgrade_res['upgrade-dummy']
+
+logit_res_upgrade_market = sm.Logit(df_data_upgrade_res_y, df_data_upgrade_res_X).fit(cov_type='HC0') # cov_type='HC0': White’s heteroskedasticity‑robust (“sandwich”) estimator
+sys.stdout = open(paths['tables'] / 'logit_res_upgrade_market_summary2.txt', 'w')
+print(logit_res_upgrade_market.summary2())
+sys.stdout = sys.__stdout__
+
+# T-Test
+dic_t_test_upgrade_market_1 = t_test_tables_1(res= logit_res_upgrade_market, category_name= ['IGL', 'HY'], dummy_category='HY',
+              list_X_variables=['T-Bill-rate', 'DD', 'dDD'])
+df_t_test_upgrade_market_1 = pd.concat(dic_t_test_upgrade_market_1, axis=1)
+
+dic_t_test_upgrade_market_2 = t_test_tables_2(res= logit_res_upgrade_market, category_name= ['IGL', 'HY'], dummy_category='HY',
+                                                  list_X_common_variables=['T-Bill-rate'],
+                                                  list_X_firm_variables=['DD'])
+df_t_test_upgrade_market_2 = pd.concat(dic_t_test_upgrade_market_2, axis=1)
+dic_t_test_tables_upgrade['Market'] = df_t_test_upgrade_market_2
+
+# Goodness-of-fit table
+df_goodness_fit_upgrade_market = goodness_fit_table(res=logit_res_upgrade_market)
+dic_goodness_fit_tables_upgrade['Market'] = df_goodness_fit_upgrade_market
+
+# *** Fitting the logit regression (resample data) - Accounting + Market Data ***
+ind_variable_to_include = ['T-Bill-rate', 'EBIT/TA', 'dEBIT/TA', 'TD/TA', 'dTD/TA', 'IEXP/TA', 'dIEXP/TA', 'DD', 'dDD',
+                           'D-HY', 'T-Bill-rate*D-HY', 'EBIT/TA*D-HY', 'dEBIT/TA*D-HY', 'TD/TA*D-HY',
+                           'dTD/TA*D-HY', 'IEXP/TA*D-HY', 'dIEXP/TA*D-HY', 'DD*D-HY', 'dDD*D-HY']
+df_data_upgrade_res_X = df_data_upgrade_res[ind_variable_to_include]
+df_data_upgrade_res_X = sm.add_constant(df_data_upgrade_res_X)
+df_data_upgrade_res_y = df_data_upgrade_res['upgrade-dummy']
+
+logit_res_upgrade_accounting_market = sm.Logit(df_data_upgrade_res_y, df_data_upgrade_res_X).fit(cov_type='HC0') # cov_type='HC0': White’s heteroskedasticity‑robust (“sandwich”) estimator
+sys.stdout = open(paths['tables'] / 'logit_res_upgrade_accounting_market_summary2.txt', 'w')
+print(logit_res_upgrade_accounting_market.summary2())
+sys.stdout = sys.__stdout__
+
+# T-Test
+dic_t_test_upgrade_accounting_market_1 = t_test_tables_1(res= logit_res_upgrade_accounting_market, category_name= ['IGL', 'HY'], dummy_category='HY',
+              list_X_variables=['T-Bill-rate', 'EBIT/TA', 'TD/TA', 'IEXP/TA', 'DD'])
+df_t_test_upgrade_accounting_market_1 = pd.concat(dic_t_test_upgrade_accounting_market_1, axis=1)
+
+dic_t_test_upgrade_accounting_market_2 = t_test_tables_2(res= logit_res_upgrade_accounting_market, category_name= ['IGL', 'HY'], dummy_category='HY',
+                                                  list_X_common_variables=['T-Bill-rate'],
+                                                  list_X_firm_variables=['EBIT/TA', 'TD/TA', 'IEXP/TA', 'DD'])
+df_t_test_upgrade_accounting_market_2 = pd.concat(dic_t_test_upgrade_accounting_market_2, axis=1)
+dic_t_test_tables_upgrade['Accounting + Market'] = df_t_test_upgrade_accounting_market_2
+
+# Goodness-of-fit table
+df_goodness_fit_upgrade_accounting_market = goodness_fit_table(res=logit_res_upgrade_accounting_market)
+dic_goodness_fit_tables_upgrade['Accounting + Market'] = df_goodness_fit_upgrade_accounting_market
+
+
+# *** Export T-Test tables to .tex ***
+df_t_test_tables_upgrade = pd.concat(dic_t_test_tables_upgrade, axis=1).stack(level=1, future_stack=True).fillna('')
+df_t_test_tables_upgrade.to_latex(paths['tables'] / 'df_t_test_tables_upgrade.tex', float_format="%.4f")
+
+# *** Export model goodness-of-fit tables to .tex ***
+df_goodness_fit_tables_upgrade = pd.concat(dic_goodness_fit_tables_upgrade, axis=1)
+df_goodness_fit_tables_upgrade.columns = df_goodness_fit_tables_upgrade.columns.droplevel(1)
+df_goodness_fit_tables_upgrade.to_latex(paths['tables'] / 'df_goodness_fit_tables_upgrade.tex', float_format="%.4f")
+
+# *** Export regression summary table to .tex ***
+custom_names = ['Accounting', 'Market', 'Accounting + Market']
+stargazer = Stargazer([logit_res_upgrade_accounting, logit_res_upgrade_market, logit_res_upgrade_accounting_market])
+stargazer.custom_columns(custom_names, [1, 1, 1])
+with open(paths['tables'] / 'logit_res_upgrade_summary_table_all.tex', 'w') as f:
+    f.write(stargazer.render_latex())
+
+
+
+
+'''
 # Model estimated rating upgrade probability within next 12m (real data)
-df_data_test_upgrade['y_index_upgrade_predict'] = (sm.add_constant(df_data_upgrade.loc[:, df_data_upgrade.columns != 'next_12m_upgrade']) * df_upgrade_params).sum(axis=1)
+df_data_test_upgrade['y_index_upgrade_predict'] = (sm.add_constant(df_data_upgrade.loc[:, df_data_upgrade.columns != 'upgrade-dummy']) * df_upgrade_params).sum(axis=1)
 df_data_test_upgrade['estimated_proba_upgrade_next_12m'] = 1 / (1 + np.exp(-df_data_test_upgrade['y_index_upgrade_predict']))
 
 
 # Marginal effects
-
+'''
 
 # %%
 # ******************************************************************************
@@ -1299,10 +1644,10 @@ from sklearn.metrics import balanced_accuracy_score
 def model_evaluation(df_data_test, credit_event_type, recall_target):
 
     if credit_event_type == 'downgrade':
-        df_data_test_y_true = df_data_test['next_12m_downgrade']
+        df_data_test_y_true = df_data_test['downgrade-dummy']
         df_data_test_estimated_proba = df_data_test['estimated_proba_downgrade_next_12m']
     if credit_event_type == 'upgrade':
-        df_data_test_y_true = df_data_test['next_12m_upgrade']
+        df_data_test_y_true = df_data_test['upgrade-dummy']
         df_data_test_estimated_proba = df_data_test['estimated_proba_upgrade_next_12m']
 
     # *** Tuning the decision threshold ***
@@ -1455,10 +1800,10 @@ def model_evaluation(df_data_test, credit_event_type, recall_target):
 
     # Coefficient of discriminations
     if credit_event_type == 'downgrade':
-        df_data_test_mean = df_data_test.drop(['DATES', 'Issuer'], axis=1).groupby('next_12m_downgrade').mean()
+        df_data_test_mean = df_data_test.drop(['DATES', 'Issuer'], axis=1).groupby('downgrade-dummy').mean()
         s_data_test_mean_proba = pd.Series(df_data_test_mean['estimated_proba_downgrade_next_12m'], name='average_estimated_proba_downgrade')
     if credit_event_type == 'upgrade':
-        df_data_test_mean = df_data_test.drop(['DATES', 'Issuer'], axis=1).groupby('next_12m_upgrade').mean()
+        df_data_test_mean = df_data_test.drop(['DATES', 'Issuer'], axis=1).groupby('upgrade-dummy').mean()
         s_data_test_mean_proba = pd.Series(df_data_test_mean['estimated_proba_upgrade_next_12m'], name='average_estimated_proba_upgrade')
 
     s_data_test_mean_proba.loc['Coefficient of discrimination'] = s_data_test_mean_proba.loc[1] - s_data_test_mean_proba.loc[0]
