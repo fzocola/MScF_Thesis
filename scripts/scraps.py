@@ -922,4 +922,12 @@ df_data_test_downgrade_mean_proba = pd.DataFrame(s_data_test_downgrade_mean_prob
 # *** Classification model performance ***
 '''
 
+'''
+def relative_logloss(y_true, y_pred):
+    base_rate = y_true.mean() # base rate
+    ll_model = log_loss(y_true, y_pred)
 
+    ll_base = log_loss(y_true, [base_rate] * len(y_true))
+    rll = 1 - (ll_model / ll_base)
+    return rll
+'''
