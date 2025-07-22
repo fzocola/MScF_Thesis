@@ -1064,10 +1064,10 @@ def t_test_tables_2(res, category_name, dummy_category, list_X_common_variables,
 def goodness_fit_table(res):
     dic = {
         "Observations": res.nobs,
-        "Pseudo R-squared": res.prsquared,
+        "Log Likelihood": res.llf,
+        # "Pseudo R-squared": res.prsquared,
         "AIC": res.aic,
-        "BIC": res.bic,
-        "Log Likelihood": res.llf
+        "BIC": res.bic
     }
     table_output = pd.DataFrame.from_dict(dic, orient='index')
     return table_output
@@ -1347,6 +1347,19 @@ def relative_logloss(y_true, y_pred):
     rll = 1 - (ll_model / ll_base)
     return ll_model, rll
 
+def mcfadden_r2(y_true, y_pred):
+    y_true = np.asarray(y_true, dtype=float)
+    y_pred = np.asarray(y_pred, dtype=float)
+
+    ll_mle = np.sum(y_true * np.log(y_pred) + (1 - y_true) * np.log(1 - y_pred))
+
+    base_rate = y_true.mean()  # null model prob.
+    n = len(y_true) # sample size
+    ll_null = n * (base_rate * np.log(base_rate) + (1 - base_rate) * np.log(1 - base_rate))
+
+    return 1 - (ll_mle / ll_null)
+
+
 def classification_performance(df_data_test, credit_event_type):
     dic_tmp = {}
 
@@ -1433,13 +1446,12 @@ def classification_performance(df_data_test, credit_event_type):
         # ks_stat, p_value = ks_statistic(y_true=dic_tmp[i]['dummy'], y_score=dic_tmp[i]['estimated-hazard-rate'])
         # print(ks_stat - (tpr-fpr).max())
 
-        # Relative Log-Loss
-        ll, rll = relative_logloss(y_true=dic_tmp[i]['dummy'], y_pred=dic_tmp[i]['estimated-hazard-rate'])
+        # Mcfadden_r2
+        mcf_r2 = mcfadden_r2(y_true=dic_tmp[i]['dummy'], y_pred=dic_tmp[i]['estimated-hazard-rate'])
 
         dic_classification_performance_stats[i] = {
             'AUC-ROC': logit_roc_auc,
-            'Log-Loss': ll,
-            'Relative Log-Loss': rll,
+            'McFadden Pseudo R-squared': mcf_r2,
         }
 
     # fig.suptitle(f'{credit_event_type}: ROC and PR Curves by Rating Group', fontsize=18, y=1.02)

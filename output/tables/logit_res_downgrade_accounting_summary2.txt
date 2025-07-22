@@ -3,8 +3,8 @@
 Dep. Variable:        downgrade-dummy   No. Observations:                30123
 Model:                          Logit   Df Residuals:                    30107
 Method:                           MLE   Df Model:                           15
-Date:                Fri, 18 Jul 2025   Pseudo R-squ.:                  0.1840
-Time:                        19:07:48   Log-Likelihood:                -2912.2
+Date:                Tue, 22 Jul 2025   Pseudo R-squ.:                  0.1840
+Time:                        15:27:40   Log-Likelihood:                -2912.2
 converged:                       True   LL-Null:                       -3568.8
 Covariance Type:              cluster   LLR p-value:                7.573e-271
 =====================================================================================

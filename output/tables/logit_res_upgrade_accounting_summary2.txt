@@ -3,8 +3,8 @@
 Dep. Variable:          upgrade-dummy   No. Observations:                28639
 Model:                          Logit   Df Residuals:                    28623
 Method:                           MLE   Df Model:                           15
-Date:                Fri, 18 Jul 2025   Pseudo R-squ.:                  0.2824
-Time:                        19:07:49   Log-Likelihood:                -2389.6
+Date:                Tue, 22 Jul 2025   Pseudo R-squ.:                  0.2824
+Time:                        15:27:40   Log-Likelihood:                -2389.6
 converged:                       True   LL-Null:                       -3329.9
 Covariance Type:              cluster   LLR p-value:                     0.000
 ====================================================================================
