@@ -1,6 +1,6 @@
 # Credit Rating Transition Modeling
 
-## Can We Estimate the Probability that Issuers Become Fallen Angels or Rising Stars?
+## Can We Predict Whether Issuers Will Become Fallen Angels or Rising Stars?
 
 ### Abstract
 Credit-rating transitions, especially downgrades from investment-grade to high-yield ("fallen angels") and upgrades from high-yield to investment-grade ("rising stars"), can have a significant impact on the value of corporate bonds.
